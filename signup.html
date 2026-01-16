@@ -28,35 +28,7 @@
     </p>
   </div>
 </div>
-
-<script>
-function signupUser(event) {
-  event.preventDefault();
-
-  const fullName = document.getElementById('name').value.trim();
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const skillOffer = document.getElementById('offer').value.trim();
-  const skillLearn = document.getElementById('learn').value.trim();
-  const message = document.getElementById('signupMessage');
-
-  if (localStorage.getItem(email)) {
-    message.textContent = "User already exists! Please login.";
-    message.style.color = "red";
-    return;
-  }
-
-  const user = { fullName, email, password, skillOffer, skillLearn };
-  localStorage.setItem(email, JSON.stringify(user));
-
-  message.textContent = "Signup successful! Redirecting...";
-  message.style.color = "limegreen";
-
-  setTimeout(() => {
-    window.location.href = "index.html";
-  }, 1500);
-}
-</script>
-
+<script type="module" src="script.js"></script>
 </body>
 </html>
+
