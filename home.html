@@ -2,18 +2,114 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Skill Exchange | Home</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>SkillSwap | Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tailwind Theme -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#006064',
+            accent: '#FF7F50'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .glow-btn {
+      box-shadow: 0 0 25px rgba(0, 96, 100, 0.5);
+    }
+  </style>
 </head>
-<body>
 
-  <div class="home-container">
-    <h1>Welcome to Skill Exchange 🎉</h1>
-    <p>You have successfully logged in.</p>
+<body class="bg-gradient-to-br from-[#0F172A] via-[#020617] to-[#020617] min-h-screen text-gray-200">
 
-    <button onclick="logout()">Logout</button>
+<!-- NAVBAR -->
+<nav class="sticky top-0 z-50 backdrop-blur-lg bg-[#020617]/80 border-b border-white/10">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+
+    <!-- Logo -->
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center font-bold text-white text-lg">
+        S
+      </div>
+      <span class="text-xl font-semibold">SkillSwap</span>
+    </div>
+
+    <!-- Logout -->
+    <button
+      onclick="logout()"
+      class="px-5 py-2 rounded-lg border border-white/20 hover:bg-white/10 transition"
+    >
+      Logout
+    </button>
+
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<section class="max-w-6xl mx-auto px-6 py-20">
+
+  <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-10 text-center">
+
+    <h1 class="text-4xl font-bold mb-4">
+      Welcome to <span class="text-primary">SkillSwap</span> 🎉
+    </h1>
+
+    <p class="text-gray-400 text-lg mb-8">
+      You have successfully logged in. Start exploring skills and connecting with others.
+    </p>
+
+    <!-- ACTION CARDS -->
+    <div class="grid md:grid-cols-3 gap-6">
+
+      <div class="p-6 rounded-xl bg-[#020617] border border-white/10 hover:border-primary transition">
+        <h3 class="text-xl font-semibold mb-2">🔍 Discover Skills</h3>
+        <p class="text-gray-400 text-sm">
+          Browse users and find skills you want to learn.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-xl bg-[#020617] border border-white/10 hover:border-primary transition">
+        <h3 class="text-xl font-semibold mb-2">🤝 Exchange Knowledge</h3>
+        <p class="text-gray-400 text-sm">
+          Connect with people and exchange skills without money.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-xl bg-[#020617] border border-white/10 hover:border-primary transition">
+        <h3 class="text-xl font-semibold mb-2">🚀 Grow Together</h3>
+        <p class="text-gray-400 text-sm">
+          Improve personally and professionally through collaboration.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-10">
+      <button class="px-8 py-3 rounded-xl bg-gradient-to-r from-primary to-accent glow-btn hover:scale-105 transition font-semibold">
+        Explore Skills →
+      </button>
+    </div>
+
   </div>
 
-  <script type="module" src="script.js"></script>
+</section>
+
+<footer class="border-t border-white/10 py-6 text-center text-gray-500 text-sm">
+  © 2026 SkillSwap
+</footer>
+
+<!-- FIREBASE SCRIPT -->
+<script type="module" src="script.js"></script>
+
 </body>
 </html>
