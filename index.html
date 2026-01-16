@@ -51,31 +51,7 @@
 
 </div>
 
-<script>
-function loginUser(event) {
-  event.preventDefault();
-
-  const email = document.getElementById("loginEmail").value.trim();
-  const password = document.getElementById("loginPassword").value;
-  const message = document.getElementById("loginMessage");
-
-  const storedUser = JSON.parse(localStorage.getItem(email));
-
-  if (!storedUser) {
-    message.textContent = "No user found. Please sign up first.";
-    message.style.color = "red";
-    return;
-  }
-
-  if (storedUser.password === password) {
-    message.textContent = "Login successful!";
-    message.style.color = "limegreen";
-  } else {
-    message.textContent = "Invalid email or password.";
-    message.style.color = "red";
-  }
-}
-</script>
-
+<script type="module" src="script.js"></script>
 </body>
 </html>
+
