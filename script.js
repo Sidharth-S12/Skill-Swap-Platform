@@ -1,55 +1,70 @@
+// 🔥 Firebase imports
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-/* ---------- SIGNUP ---------- */
-function signupUser(event) {
-  event.preventDefault();
+// 🔴 PASTE YOUR FIREBASE CONFIG HERE
+const firebaseConfig = {
+  apiKey: "AIzaSyBUMI6CgEVrnfsTVBXZx3uZDsBh5oUY-1w",
+  authDomain: "skill-swap-platform-53823.firebaseapp.com",
+  projectId:"skill-swap-platform-53823",
+  appId: "1:527524796826:web:8b7f50476ba72c8ebe0223"
+};
 
-  const fullName = document.getElementById('fullname').value.trim();
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const skillOffer = document.getElementById('skilloffer').value.trim();
-  const skillLearn = document.getElementById('skilllearn').value.trim();
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
-  const message = document.getElementById('signupMessage');
-
-  if (localStorage.getItem(email)) {
-    message.textContent = "User already exists! Please login.";
-    message.style.color = "red";
-    return;
-  }
-
-  const user = { fullName, email, password, skillOffer, skillLearn };
-  localStorage.setItem(email, JSON.stringify(user));
-
-  message.textContent = "Signup successful! Redirecting to login...";
-  message.style.color = "green";
-
-  setTimeout(() => {
-    window.location.href = 'index.html';
-  }, 1500);
-}
-
-/* ---------- LOGIN ---------- */
-function loginUser(event) {
+//
+// -------- SIGNUP --------
+//
+window.signupUser = function (event) {
   event.preventDefault();
 
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value;
+  const message = document.getElementById("signupMessage");
 
-  const message = document.getElementById("message");
+  createUserWithEmailAndPassword(auth, email, password)
+    .then(() => {
+      message.style.color = "green";
+      message.textContent = "Signup successful! Redirecting...";
+      setTimeout(() => {
+        window.location.href = "index.html";
+      }, 1500);
+    })
+    .catch((error) => {
+      message.style.color = "red";
+      message.textContent = error.message;
+    });
+};
 
-  const storedUser = JSON.parse(localStorage.getItem(email));
+//
+// -------- LOGIN --------
+//
+window.loginUser = function (event) {
+  event.preventDefault();
 
-  if (!storedUser) {
-    message.textContent = "No user found. Please sign up first.";
-    message.style.color = "red";
-    return;
-  }
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const message = document.getElementById("loginMessage");
 
-  if (storedUser.password === password) {
-    message.textContent = "Login successful!";
-    message.style.color = "limegreen";
-  } else {
-    message.textContent = "Invalid email or password.";
-    message.style.color = "red";
-  }
-}
+  signInWithEmailAndPassword(auth, email, password)
+    .then(() => {
+      message.style.color = "green";
+      message.textContent = "Login successful!";
+      window.location.href = "home.html";
+    })
+    .catch((error) => {
+      message.style.color = "red";
+      message.textContent = error.message;
+    });
+};
+window.logout = function () {
+  signOut(auth).then(() => {
+    window.location.href = "index.html";
+  });
+};
