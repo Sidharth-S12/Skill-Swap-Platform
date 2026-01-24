@@ -49,11 +49,12 @@ tailwind.config = {
       Dashboard
     </a>
 
-    <a class="block px-4 py-2 rounded-lg hover:bg-white/10">
-      Skill Exchange
+    <!-- CHANGED: Requests link replaces Skill Exchange -->
+    <a href="view-requests.html" class="block px-4 py-2 rounded-lg hover:bg-white/10">
+      Requests
     </a>
 
-    <a class="block px-4 py-2 rounded-lg hover:bg-white/10">
+    <a href="browse.html" class="block px-4 py-2 rounded-lg hover:bg-white/10">
       Learning Hub
     </a>
 
@@ -134,8 +135,9 @@ tailwind.config = {
     <div class="glass rounded-2xl p-6 mb-6">
       <h3 class="font-semibold mb-4">Quick Actions</h3>
       <div class="flex gap-4">
-        <a href="./index.html"><button class="px-6 py-3 rounded-lg bg-black/80 text-white">Browse Skills</button></a>
-        <a href="./signin.html"><button class="px-6 py-3 rounded-lg border border-white/20">View Requests</button></a>
+        <a href="browse.html"><button class="px-6 py-3 rounded-lg bg-black/80 text-white">Browse Skills</button></a>
+        <!-- CHANGED: now points to view-requests.html -->
+        <a href="view-requests.html"><button class="px-6 py-3 rounded-lg border border-white/20">View Requests</button></a>
         <!-- Edit profile now goes to profile.html?edit=1 -->
         <a href="profile.html?edit=1"><button class="px-6 py-3 rounded-lg border border-white/20">Edit Profile</button></a>
       </div>
@@ -199,12 +201,16 @@ tailwind.config = {
     </a>
   </div>
 
-  <div class="glass rounded-2xl p-8 hover:scale-105 transition">
-    <div class="text-accent text-3xl mb-4">🔍</div>
-    <h3 class="text-xl font-semibold mb-3">Find Matches</h3>
-    <p class="text-gray-400 text-sm">
-      Discover compatible learners.
-    </p>
+  <div>
+    <a href="browse.html" class="block">
+      <div class="glass rounded-2xl p-8 hover:scale-105 transition">
+        <div class="text-accent text-3xl mb-4">🔍</div>
+        <h3 class="text-xl font-semibold mb-3">Find Matches</h3>
+        <p class="text-gray-400 text-sm">
+          Discover compatible learners.
+        </p>
+      </div>
+    </a>
   </div>
 
   <div class="glass rounded-2xl p-8 hover:scale-105 transition">
