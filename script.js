@@ -873,7 +873,6 @@ onAuthStateChanged(auth, (user) => {
       alert('No session specified.');
       return;
     }
-
     // Basic check: ensure current user is part of session
     get(ref(database, `sessions/${sessionId}`)).then(snap => {
       if (!snap.exists()) { alert('Session not found'); return; }
