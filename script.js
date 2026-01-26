@@ -63,11 +63,16 @@ window.signupUser = async function (event) {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const uid = userCredential.user.uid;
+    // New users: set average rating visible as 1, but zero rated reviews initially.
     await set(ref(database, "users/" + uid), {
       name: name,
       email: email,
       offer: offer,
-      learn: learn
+      learn: learn,
+      // rating fields: avgRating shows 1 initially, totalRatings 0 (no reviews yet)
+      avgRating: 1,
+      totalRatings: 0,
+      sessionsCompleted: 0
     });
     if (message) { message.style.color = "green"; message.textContent = "Signup successful! Redirecting..."; }
     console.log('signup success', uid);
@@ -190,7 +195,7 @@ function ensureGlobalModal() {
 
   const html = `
   <div id="globalModalOverlay" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center">
-    <div id="globalModalCard" class="bg-[#020617] text-gray-200 rounded-xl w-full max-w-md p-6 border border-white/10 shadow-xl">
+    <div id="globalModalCard" class="bg-[#020617] text-gray-200 rounded-xl w-full max-w-md p-6 border border-white/10 shadow-xl relative">
       <div class="flex justify-between items-start mb-4">
         <div>
           <h3 id="globalModalTitle" class="text-lg font-semibold"></h3>
@@ -270,7 +275,7 @@ function ensureRequestModal() {
 
   const modalHtml = `
     <div id="requestOverlay" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
-      <div class="bg-[#020617] text-gray-200 rounded-lg w-full max-w-lg p-6 border border-white/10">
+      <div class="bg-[#020617] text-gray-200 rounded-lg w-full max-w-lg p-6 border border-white/10 relative">
         <button id="requestCloseBtn" class="absolute right-4 top-4 text-gray-400">✕</button>
         <h3 class="text-lg font-semibold mb-4" id="requestModalTitle">Send Learning Request</h3>
 
@@ -362,6 +367,86 @@ function closeRequestModal() {
 }
 
 
+// ================= RATING MODAL =================
+let ratingModalExists = false;
+function ensureRatingModal() {
+  if (ratingModalExists) return;
+  ratingModalExists = true;
+
+  const modalHtml = `
+    <div id="ratingOverlay" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
+      <div class="bg-[#020617] text-gray-200 rounded-lg w-full max-w-md p-6 border border-white/10 relative">
+        <button id="ratingCloseBtn" class="absolute right-4 top-4 text-gray-400">✕</button>
+        <h3 class="text-lg font-semibold mb-2" id="ratingModalTitle">Rate participant</h3>
+        <div class="text-sm text-gray-400 mb-4" id="ratingModalSub"></div>
+
+        <label class="text-sm text-gray-400">Rating (1-5)</label>
+        <select id="ratingSelect" class="w-full px-3 py-2 rounded-md border border-white/10 bg-[#020617] text-gray-200 mb-3">
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Very good</option>
+          <option value="3">3 - Good</option>
+          <option value="2">2 - Fair</option>
+          <option value="1">1 - Poor</option>
+        </select>
+
+        <label class="text-sm text-gray-400">Comment (optional)</label>
+        <textarea id="ratingComment" rows="4" class="w-full px-3 py-2 rounded-md border border-white/10 mt-1 mb-4 bg-[#020617] text-gray-200" placeholder="Optional feedback..."></textarea>
+
+        <div class="flex justify-end gap-3">
+          <button id="ratingCancelBtn" class="px-4 py-2 rounded-md border border-white/10">Cancel</button>
+          <button id="ratingSendBtn" class="px-4 py-2 rounded-md bg-primary text-white">Submit Rating</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertBefore(el(modalHtml), document.body.firstChild);
+
+  document.getElementById('ratingCloseBtn').onclick = closeRatingModal;
+  document.getElementById('ratingCancelBtn').onclick = closeRatingModal;
+}
+
+let currentRatingContext = null; // { sessionId, ratedUserId, ratedUserName }
+
+function openRatingModal(sessionId, ratedUserId, ratedUserName) {
+  ensureRatingModal();
+  currentRatingContext = { sessionId, ratedUserId, ratedUserName };
+  const overlay = document.getElementById('ratingOverlay');
+  const title = document.getElementById('ratingModalTitle');
+  const sub = document.getElementById('ratingModalSub');
+  const select = document.getElementById('ratingSelect');
+  const comment = document.getElementById('ratingComment');
+
+  title.textContent = `Rate ${ratedUserName || 'participant'}`;
+  sub.textContent = `Session: ${sessionId || '—'}`;
+  select.value = "5";
+  comment.value = '';
+
+  overlay.classList.remove('hidden');
+
+  document.getElementById('ratingSendBtn').onclick = async () => {
+    const rating = Number(select.value);
+    const comm = comment.value.trim();
+    if (!rating || rating < 1 || rating > 5) {
+      await showAlert('Please choose a valid rating between 1 and 5.');
+      return;
+    }
+    try {
+      await submitFeedback(sessionId, rating, comm, ratedUserId);
+      closeRatingModal();
+    } catch (e) {
+      console.error('Rating submit failed', e);
+      await showAlert('Failed to submit rating.');
+    }
+  };
+}
+
+function closeRatingModal() {
+  const overlay = document.getElementById('ratingOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  currentRatingContext = null;
+}
+
+
 // ================= BROWSE: mentor card + populate =================
 function createMentorCard(mentor, currentUid) {
   const card = document.createElement('div');
@@ -377,6 +462,12 @@ function createMentorCard(mentor, currentUid) {
   const email = document.createElement('div');
   email.className = "text-gray-400 text-sm mt-1";
   email.textContent = 'Email: —';
+
+  const meta = document.createElement('div');
+  meta.className = "text-sm text-gray-400 mt-2";
+  const avgRating = (mentor.avgRating !== undefined && mentor.avgRating !== null) ? mentor.avgRating : 1;
+  const sessionsCompleted = mentor.sessionsCompleted || mentor.totalRatings || 0;
+  meta.textContent = `Rating: ${avgRating} · Sessions completed: ${sessionsCompleted}`;
 
   const teachDiv = document.createElement('div');
   teachDiv.className = "flex flex-wrap gap-2 mt-3";
@@ -400,6 +491,7 @@ function createMentorCard(mentor, currentUid) {
 
   left.appendChild(name);
   left.appendChild(email);
+  left.appendChild(meta);
   left.appendChild(teachDiv);
   left.appendChild(learnDiv);
 
@@ -443,7 +535,10 @@ async function populateBrowsePage(currentUid) {
         name: data.name,
         email: data.email,
         offer: data.offer || '',
-        learn: data.learn || ''
+        learn: data.learn || '',
+        avgRating: (data.avgRating !== undefined && data.avgRating !== null) ? data.avgRating : 1,
+        totalRatings: data.totalRatings || 0,
+        sessionsCompleted: data.sessionsCompleted || 0
       }));
     }
 
@@ -490,13 +585,13 @@ async function populateBrowsePage(currentUid) {
 // ================= isConnected: sessions OR accepted requests =================
 async function isConnected(uidA, uidB) {
   try {
-    // 1) check sessions (accepted/active)
+    // 1) check sessions (accepted/active/completed)
     const sessionsSnap = await get(ref(database, "sessions"));
     if (sessionsSnap.exists()) {
       const sessions = sessionsSnap.val();
       const found = Object.values(sessions).some(s => {
         if (!s) return false;
-        const okStatus = (s.status === 'active' || s.status === 'accepted');
+        const okStatus = (s.status === 'active' || s.status === 'accepted' || s.status === 'completed');
         const between = (s.teacher === uidA && s.learner === uidB) || (s.teacher === uidB && s.learner === uidA);
         return okStatus && between;
       });
@@ -545,6 +640,14 @@ function createSessionCard(session, otherUser, currentUid) {
     ? (session.learnerEmail || otherUser?.email || session.contact || '—')
     : (session.teacherEmail || otherUser?.email || session.contact || '—');
 
+  // determine rating flags (safety fallback to false)
+  const teacherRated = !!session.teacherRated;
+  const learnerRated = !!session.learnerRated;
+
+  // For the current user, check whether they've rated and whether the partner has rated
+  const reviewerHasRated = (currentUid === session.teacher) ? teacherRated : learnerRated;
+  const partnerHasRated = (currentUid === session.teacher) ? learnerRated : teacherRated;
+
   const left = document.createElement("div");
   left.innerHTML = `
     <div class="text-lg font-semibold">${escapeHtml(session.skill || '')}</div>
@@ -553,14 +656,14 @@ function createSessionCard(session, otherUser, currentUid) {
   `;
 
   const right = document.createElement("div");
-  right.className = "flex gap-2";
+  right.className = "flex gap-2 items-center";
 
   const statusBtn = document.createElement("button");
   statusBtn.className = "px-3 py-1 rounded-md bg-black/80 text-white text-sm";
   statusBtn.textContent = (session.status || 'active');
   right.appendChild(statusBtn);
 
-  if (session.status === 'active' || session.status === 'accepted') {
+  if (session.status === 'active' || session.status === 'accepted' || session.status === 'completed') {
     const chatBtn = document.createElement("button");
     chatBtn.className = "px-3 py-1 rounded-md border border-white/20 text-sm";
     chatBtn.textContent = "Chat";
@@ -570,6 +673,34 @@ function createSessionCard(session, otherUser, currentUid) {
       else showAlert('Session id missing.');
     };
     right.appendChild(chatBtn);
+  }
+
+  if (!reviewerHasRated) {
+    const rateBtn = document.createElement("button");
+    rateBtn.className = "px-3 py-1 rounded-md bg-primary text-white text-sm";
+    rateBtn.textContent = "Rate partner";
+    rateBtn.onclick = async () => {
+      const sid = session.id || session.sessionId;
+      if (!sid) { await showAlert('Session id missing.'); return; }
+      const otherUid = (session.teacher === currentUid) ? session.learner : session.teacher;
+      const otherName = (session.teacher === otherUid ? (session.teacherName || '') : (session.learnerName || 'Participant')) || 'Participant';
+      openRatingModal(sid, otherUid, otherName);
+    };
+    right.appendChild(rateBtn);
+  } else {
+    // Show Rated ✓
+    const doneBtn = document.createElement("button");
+    doneBtn.className = "px-3 py-1 rounded-md border border-white/20 text-sm text-gray-300";
+    doneBtn.textContent = "Rated ✓";
+    right.appendChild(doneBtn);
+
+    // If partner hasn't rated yet, show waiting badge
+    if (!partnerHasRated) {
+      const waitBadge = document.createElement("div");
+      waitBadge.className = "text-xs text-yellow-400 bg-yellow-900/10 px-2 py-1 rounded-md ml-2";
+      waitBadge.textContent = "Waiting for partner to rate";
+      right.appendChild(waitBadge);
+    }
   }
 
   container.appendChild(left);
@@ -616,7 +747,8 @@ async function populateDashboardFor(uid, currentUserEmail, firebaseUser) {
     if (sessionsSnap.exists()) {
       const sessions = sessionsSnap.val();
       const sessionList = Object.entries(sessions).map(([id, s]) => ({ id, ...s }));
-      const matching = sessionList.filter(s => s.teacher === uid || s.learner === uid);
+      // Only consider sessions that are still active/accepted for the "active sessions" area.
+      const matching = sessionList.filter(s => (s.teacher === uid || s.learner === uid) && (s.status === 'active' || s.status === 'accepted'));
       activeCount = matching.length;
       if (matching.length === 0 && container) {
         container.innerHTML = '<p class="text-gray-400">No active sessions yet.</p>';
@@ -625,6 +757,16 @@ async function populateDashboardFor(uid, currentUserEmail, firebaseUser) {
           s.id = s.id || s.sessionId || s.id;
 
           const otherUid = (s.teacher === uid) ? s.learner : s.teacher;
+
+          // Resolve whether each participant already rated for this session (covers older data where flags may be missing)
+          try {
+            const fbTeacherSnap = await get(ref(database, `feedbacks/${s.id}_${s.teacher}`));
+            const fbLearnerSnap = await get(ref(database, `feedbacks/${s.id}_${s.learner}`));
+            s.teacherRated = s.teacherRated || (fbTeacherSnap.exists());
+            s.learnerRated = s.learnerRated || (fbLearnerSnap.exists());
+          } catch (e) {
+            console.warn('Failed to resolve feedback flags for session', s.id, e);
+          }
 
           let otherUser = null;
           if (otherUid) {
@@ -659,12 +801,15 @@ async function populateDashboardFor(uid, currentUserEmail, firebaseUser) {
     }
     setText("activeSessionsCount", activeCount);
 
-    const ratingSnap = await get(ref(database, "ratings/" + uid));
-    if (ratingSnap.exists()) {
-      setText("rating", ratingSnap.val().average || 'N/A');
-    } else {
-      setText("rating", 'N/A');
-    }
+   const userRatingSnap = await get(ref(database, "users/" + uid));
+   if (userRatingSnap.exists() && userRatingSnap.val().avgRating) {
+    setText("rating", userRatingSnap.val().avgRating);
+   } 
+   else 
+   {
+    setText("rating", 'N/A');
+   }
+
 
   } catch (err) {
     console.error("Error populating dashboard:", err);
@@ -914,7 +1059,9 @@ async function populateRequestsPage(currentUid) {
             teacherName: teacherData.name || '',
             teacherEmail: teacherData.email || '',
             learnerName: learnerData.name || '',
-            learnerEmail: learnerData.email || ''
+            learnerEmail: learnerData.email || '',
+            teacherRated: false,
+            learnerRated: false
           };
           await set(sessRef, sessionObj);
 
@@ -1063,6 +1210,154 @@ async function populateChatHeader(sessionId, currentUid) {
     console.error('populateChatHeader error', e);
   }
 }
+
+
+// ================= FEEDBACK + RANKING =================
+// Submit feedback after a session
+// reviewer submits a rating for the other participant
+async function submitFeedback(sessionId, rating, comment = '', ratedUserId = null) {
+  const user = auth.currentUser;
+  if (!user) {
+    await showAlert("You must be logged in to submit feedback.");
+    return;
+  }
+  if (!sessionId) {
+    await showAlert("Session id missing.");
+    return;
+  }
+
+  try {
+    const sessionSnap = await get(ref(database, "sessions/" + sessionId));
+    if (!sessionSnap.exists()) {
+      await showAlert("Session not found.");
+      return;
+    }
+    const session = sessionSnap.val();
+    const reviewerId = user.uid;
+
+    // determine the user being rated: prefer param, otherwise compute
+    let ratedId = ratedUserId;
+    if (!ratedId) {
+      if (reviewerId === session.teacher) ratedId = session.learner;
+      else if (reviewerId === session.learner) ratedId = session.teacher;
+      else {
+        await showAlert("You are not a participant in this session.");
+        return;
+      }
+    }
+
+    // prevent double rating (per reviewer per session)
+    const checkRef = ref(database, `feedbacks/${sessionId}_${reviewerId}`);
+    const checkSnap = await get(checkRef);
+    if (checkSnap.exists()) {
+      await showAlert("You already rated this session");
+      return;
+    }
+
+    // write feedback entry keyed by sessionId_reviewerId
+    await set(checkRef, {
+      sessionId,
+      reviewerId,
+      ratedUserId: ratedId,
+      rating: Number(rating),
+      comment,
+      createdAt: Date.now()
+    });
+
+    // update aggregate rating for the rated user
+    await updateUserRating(ratedId, Number(rating));
+
+    // update session flags for who has rated; do NOT complete until both have rated.
+    try {
+      const updates = {};
+      if (reviewerId === session.teacher) updates.teacherRated = true;
+      if (reviewerId === session.learner) updates.learnerRated = true;
+      if (Object.keys(updates).length) {
+        await update(ref(database, `sessions/${sessionId}`), updates);
+      }
+
+      // reload session and mark completed only if both flags true
+      const refreshed = await get(ref(database, `sessions/${sessionId}`));
+      if (refreshed.exists()) {
+        const s2 = refreshed.val();
+        const teacherRated = !!s2.teacherRated;
+        const learnerRated = !!s2.learnerRated;
+        if (teacherRated && learnerRated && s2.status !== 'completed') {
+          await update(ref(database, `sessions/${sessionId}`), {
+            status: 'completed',
+            completedAt: Date.now()
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to update session rating flags/completion', e);
+    }
+
+    await showAlert("Rating submitted", "Success");
+    // refresh UI where relevant
+    const currentUid = auth.currentUser.uid;
+    if (window.location.pathname.includes('home.html')) {
+      await populateDashboardFor(currentUid, auth.currentUser.email, auth.currentUser);
+    }
+    if (window.location.pathname.includes('browse.html')) {
+      await populateBrowsePage(currentUid);
+    }
+    if (window.location.pathname.includes('profile.html')) {
+      const params = new URLSearchParams(window.location.search);
+      const profileUid = params.get('uid') || currentUid;
+      await populateProfileFor(profileUid, auth.currentUser);
+    }
+  } catch (e) {
+    console.error("Feedback error", e);
+    await showAlert("Failed to submit feedback");
+  }
+}
+
+// Update user's aggregate rating and sessionsCompleted (sessionsCompleted ~ number of ratings)
+async function updateUserRating(userId, newRating) {
+  if (!userId) return;
+  const userRef = ref(database, "users/" + userId);
+  const snap = await get(userRef);
+
+  let data = snap.exists() ? snap.val() : {};
+
+  // ensure defaults
+  const totalRatings = Number(data.totalRatings || 0);
+  const avgRating = Number(data.avgRating || 1);
+
+  const updatedTotal = totalRatings + 1;
+  const updatedAvg =
+    ((avgRating * totalRatings) + newRating) / updatedTotal;
+
+  await update(userRef, {
+    totalRatings: updatedTotal,
+    avgRating: Number(updatedAvg.toFixed(2)),
+    sessionsCompleted: updatedTotal // sessionsCompleted defined as number of ratings/reviews
+  });
+}
+
+
+// OPTIONAL: View ranked teachers (console only, no UI change)
+window.getRankedTeachers = async function () {
+  const snap = await get(ref(database, "users"));
+  if (!snap.exists()) return;
+
+  const users = snap.val();
+  const ranked = [];
+
+  Object.keys(users).forEach(uid => {
+    if (users[uid].avgRating) {
+      ranked.push({
+        uid,
+        name: users[uid].name || 'User',
+        rating: users[uid].avgRating
+      });
+    }
+  });
+
+  ranked.sort((a, b) => b.rating - a.rating);
+  console.table(ranked);
+};
 
 
 // ================= AUTH ROUTING & PAGE HOOKS =================
