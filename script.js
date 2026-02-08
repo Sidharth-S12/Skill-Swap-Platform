@@ -6,7 +6,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import {
@@ -33,6 +35,17 @@ const firebaseConfig = {
 // ================= INITIALIZE FIREBASE =================
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
+// Explicitly set persistence to LOCAL (browserLocalPersistence)
+// useful for ensuring state remains after page reloads or new tabs
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log("Persistence set to LOCAL");
+  })
+  .catch((error) => {
+    console.error("Persistence error:", error);
+  });
+
 const database = getDatabase(app);
 
 
@@ -294,76 +307,199 @@ function ensureRequestModal() {
   `;
   document.body.insertBefore(el(modalHtml), document.body.firstChild);
 
-  document.getElementById('requestCloseBtn').onclick = closeRequestModal;
-  document.getElementById('requestCancelBtn').onclick = closeRequestModal;
+  // FIXED: Use proper event delegation with once() to ensure correct handler
+  document.getElementById('requestCloseBtn').addEventListener('click', closeRequestModal, false);
+  document.getElementById('requestCancelBtn').addEventListener('click', closeRequestModal, false);
+  
+  // FIXED: Event listener for send button (will be used with event delegation)
+// FIXED: Remove old listener before adding new one to prevent duplicate handlers
+const sendBtn = document.getElementById('requestSendBtn');
+const newSendBtn = sendBtn.cloneNode(true);
+sendBtn.parentNode.replaceChild(newSendBtn, sendBtn);
+newSendBtn.addEventListener('click', handleRequestSendClick, false);
 }
 
 let currentModalMentor = null;
+let requestModalState = { isSubmitting: false }; // Prevent double-submission
 
 async function openRequestModal(mentor) {
   ensureRequestModal();
   currentModalMentor = mentor;
+  
+  // Reset form state
+  requestModalState.isSubmitting = false;
+  
   const overlay = document.getElementById('requestOverlay');
   const title = document.getElementById('requestModalTitle');
   const skillInput = document.getElementById('requestSkillInput');
   const msgInput = document.getElementById('requestMessageInput');
 
+  // FIXED: Clear previous values
   title.textContent = `Send Learning Request to ${mentor.name || mentor.email || 'mentor'}`;
-
-  const offers = splitSkills(mentor.offer);
-  if (offers.length === 1) skillInput.value = offers[0];
-  else skillInput.value = '';
-
-  if (!skillInput.value) skillInput.placeholder = offers.length ? offers.join(', ') : 'e.g. Python Programming';
+  skillInput.value = '';
   msgInput.value = '';
 
-  overlay.classList.remove('hidden');
+  const offers = splitSkills(mentor.offer);
+  if (offers.length === 1) {
+    skillInput.value = offers[0];
+  }
 
-  const sendBtn = document.getElementById('requestSendBtn');
-  sendBtn.onclick = async () => {
+  if (!skillInput.value) {
+    skillInput.placeholder = offers.length ? offers.join(', ') : 'e.g. Python Programming';
+  }
+
+  overlay.classList.remove('hidden');
+}
+
+// FIXED: Separate handler function for send button (no reassignment on every open)
+async function handleRequestSendClick(event) {
+  event.preventDefault();
+  console.log('🔵 handleRequestSendClick triggered');
+  
+  // FIXED: Prevent double-submission using flag
+  if (requestModalState.isSubmitting) {
+    console.log('⚠️ Request already being submitted, ignoring duplicate click');
+    return;
+  }
+  
+  requestModalState.isSubmitting = true;
+  console.log('🔒 Submission lock engaged');
+  
+  try {
+    const skillInput = document.getElementById('requestSkillInput');
+    const msgInput = document.getElementById('requestMessageInput');
+    
     const skill = skillInput.value.trim();
     const note = msgInput.value.trim();
+    console.log('📝 Form data:', { skill, note });
 
     if (!skill) {
+      console.log('❌ Skill missing');
       await showAlert('Please enter the skill you want to learn.', 'Missing skill');
+      requestModalState.isSubmitting = false;
       return;
     }
+    
     if (!note) {
       const ok = await showConfirm('Send without a message?', 'No message provided', 'Send', 'Cancel');
-      if (!ok) return;
+      if (!ok) {
+        console.log('❌ User cancelled because no message');
+        requestModalState.isSubmitting = false;
+        return;
+      }
     }
 
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) { await showAlert('Not authenticated.'); closeRequestModal(); return; }
-      const reqRef = push(ref(database, "requests"));
-      await set(reqRef, {
-        from: currentUser.uid,
-        to: mentor.uid,
-        skill: skill,
-        note: note,
-        status: "pending",
-        createdAt: Date.now()
-      });
-      await showAlert('Request sent.', 'Success');
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.log('❌ User not authenticated');
+      await showAlert('Not authenticated.');
       closeRequestModal();
+      requestModalState.isSubmitting = false;
+      return;
+    }
+    
+    if (!currentModalMentor) {
+      console.log('❌ Mentor info missing');
+      await showAlert('Mentor information missing.');
+      requestModalState.isSubmitting = false;
+      return;
+    }
+
+    // FIXED: Firebase operation with explicit error handling
+    console.log('⏳ Starting Firebase write...');
+    const reqRef = push(ref(database, "requests"));
+    await set(reqRef, {
+      from: currentUser.uid,
+      to: currentModalMentor.uid,
+      skill: skill,
+      note: note,
+      status: "pending",
+      createdAt: Date.now()
+    });
+    console.log('✅ Firebase write successful');
+
+    // FIXED: Close modal IMMEDIATELY to hide the request form
+    console.log('🚪 Closing request modal...');
+    closeRequestModal();
+    console.log('✅ request modal closed');
+    
+    // FIXED: Show success message AFTER modal is closed (cleaner UX)
+    console.log('📢 Showing success alert...');
+    await showAlert('Request sent successfully!', 'Success');
+    console.log('✅ User dismissed success alert');
+    
+    // FIXED: Refresh UI after modal is closed
+    try {
+      console.log('🔄 Refreshing UI...');
       if (window.location.pathname.includes('view-requests.html')) {
         await populateRequestsPage(currentUser.uid);
       }
       if (window.location.pathname.includes('home.html')) {
         await populateDashboardFor(currentUser.uid, currentUser.email, currentUser);
       }
-    } catch (err) {
-      console.error('Failed to send request', err);
-      await showAlert('Failed to send request.');
+      if (window.location.pathname.includes('browse.html')) {
+        await populateBrowsePage(currentUser.uid);
+      }
+      console.log('✅ UI refresh complete');
+    } catch (refreshErr) {
+      console.warn('⚠️ Failed to refresh UI after request:', refreshErr);
+      // Don't fail the entire operation, UI will refresh on next page interaction
     }
-  };
+
+  } catch (err) {
+    console.error('❌ Error in handleRequestSendClick:', err);
+    await showAlert('Failed to send request. Please try again.', 'Error');
+  } finally {
+    // CRITICAL: Always reset submission flag to allow retries
+    requestModalState.isSubmitting = false;
+    console.log('🔓 Submission lock released');
+  }
 }
 
 function closeRequestModal() {
+  console.log('🚪 closeRequestModal() called');
+  
   const overlay = document.getElementById('requestOverlay');
-  if (overlay) overlay.classList.add('hidden');
+  if (!overlay) {
+    console.error('❌ CRITICAL: Request modal overlay not found! Element ID "requestOverlay" does not exist');
+    return;
+  }
+  
+  console.log('✅ Found overlay element:', overlay);
+  console.log('📊 Overlay classList before:', overlay.className);
+  
+  // FIXED: Hide overlay
+  overlay.classList.add('hidden');
+  console.log('📊 Overlay classList after adding "hidden":', overlay.className);
+  
+  // Verify the hidden class was added
+  const isHidden = overlay.classList.contains('hidden');
+  console.log('🔍 Is overlay hidden?', isHidden);
+  
+  // FIXED: Reset form fields for next open
+  const skillInput = document.getElementById('requestSkillInput');
+  const msgInput = document.getElementById('requestMessageInput');
+  if (skillInput) {
+    skillInput.value = '';
+    console.log('✅ Cleared skill input');
+  } else {
+    console.warn('⚠️ Could not find skillInput element');
+  }
+  
+  if (msgInput) {
+    msgInput.value = '';
+    console.log('✅ Cleared message input');
+  } else {
+    console.warn('⚠️ Could not find msgInput element');
+  }
+  
+  // FIXED: Reset mentor context
   currentModalMentor = null;
+  
+  // FIXED: Reset submission flag
+  requestModalState.isSubmitting = false;
+  
+  console.log('✅ Request modal closed and reset completely');
 }
 
 
@@ -389,8 +525,8 @@ function ensureRatingModal() {
           <option value="1">1 - Poor</option>
         </select>
 
-        <label class="text-sm text-gray-400">Comment (optional)</label>
-        <textarea id="ratingComment" rows="4" class="w-full px-3 py-2 rounded-md border border-white/10 mt-1 mb-4 bg-[#020617] text-gray-200" placeholder="Optional feedback..."></textarea>
+        <label class="text-sm text-gray-400">Comment (required) *</label>
+        <textarea id="ratingComment" rows="4" class="w-full px-3 py-2 rounded-md border border-white/10 mt-1 mb-4 bg-[#020617] text-gray-200" placeholder="Describe your learning experience (required)..."></textarea>
 
         <div class="flex justify-end gap-3">
           <button id="ratingCancelBtn" class="px-4 py-2 rounded-md border border-white/10">Cancel</button>
@@ -401,14 +537,26 @@ function ensureRatingModal() {
   `;
   document.body.insertBefore(el(modalHtml), document.body.firstChild);
 
-  document.getElementById('ratingCloseBtn').onclick = closeRatingModal;
-  document.getElementById('ratingCancelBtn').onclick = closeRatingModal;
+  // FIXED: Use proper event listeners instead of onclick
+  document.getElementById('ratingCloseBtn').addEventListener('click', closeRatingModal, false);
+  document.getElementById('ratingCancelBtn').addEventListener('click', closeRatingModal, false);
+  document.getElementById('ratingSendBtn').addEventListener('click', handleRatingSendClick, false);
+  
+  // ALSO: Add direct onclick as backup to ensure handler is called
+  document.getElementById('ratingSendBtn').onclick = handleRatingSendClick;
+  
+  console.log('✅ Rating modal created and event listeners attached');
 }
 
 let currentRatingContext = null; // { sessionId, ratedUserId, ratedUserName }
+let ratingModalState = { isSubmitting: false }; // Prevent double-submission
 
 function openRatingModal(sessionId, ratedUserId, ratedUserName) {
   ensureRatingModal();
+  
+  // FIXED: Reset submission state
+  ratingModalState.isSubmitting = false;
+  
   currentRatingContext = { sessionId, ratedUserId, ratedUserName };
   const overlay = document.getElementById('ratingOverlay');
   const title = document.getElementById('ratingModalTitle');
@@ -421,30 +569,178 @@ function openRatingModal(sessionId, ratedUserId, ratedUserName) {
   select.value = "5";
   comment.value = '';
 
+  // FIXED: Show overlay by removing ALL hide styles
   overlay.classList.remove('hidden');
+  // Remove all inline styles to restore to default display
+  overlay.style.removeProperty('display');
+  overlay.style.removeProperty('visibility');
+  overlay.style.removeProperty('opacity');
+  overlay.style.removeProperty('pointer-events');
+  overlay.style.removeProperty('width');
+  overlay.style.removeProperty('height');
+  overlay.style.removeProperty('overflow');
+  overlay.style.removeProperty('position');
+  overlay.style.removeProperty('left');
+  overlay.style.removeProperty('top');
+  
+  // Also restore inner card visibility
+  const innerCard = overlay.querySelector('div');
+  if (innerCard) {
+    innerCard.style.removeProperty('display');
+  }
+  
+  console.log('✅ Rating modal opened - all styles reset to default');
+  console.log('📊 Overlay should now be visible:', window.getComputedStyle(overlay).display);
+}
 
-  document.getElementById('ratingSendBtn').onclick = async () => {
+// FIXED: Separate handler function for rating submit button
+async function handleRatingSendClick(event) {
+  console.log('🔵 handleRatingSendClick triggered');
+  event.preventDefault();
+  
+  // Log initial state
+  const overlay = document.getElementById('ratingOverlay');
+  console.log('📊 Before submit - Overlay display:', overlay ? window.getComputedStyle(overlay).display : 'NOT FOUND');
+  
+  // FIXED: Prevent double-submission
+  if (ratingModalState.isSubmitting) {
+    console.log('⚠️ Rating already being submitted, ignoring duplicate click');
+    return;
+  }
+  
+  ratingModalState.isSubmitting = true;
+  console.log('🔒 Rating submission lock engaged');
+  
+  try {
+    const select = document.getElementById('ratingSelect');
+    const comment = document.getElementById('ratingComment');
+    
+    console.log('📝 Rating elements found:', { select: !!select, comment: !!comment });
+    
     const rating = Number(select.value);
     const comm = comment.value.trim();
+    
+    console.log('📊 Rating data:', { rating, commLength: comm.length });
+    
     if (!rating || rating < 1 || rating > 5) {
-      await showAlert('Please choose a valid rating between 1 and 5.');
+      console.log('❌ Invalid rating:', rating);
+      await showAlert('Please choose a valid rating between 1 and 5.', 'Invalid Rating');
+      ratingModalState.isSubmitting = false;
       return;
     }
-    try {
-      await submitFeedback(sessionId, rating, comm, ratedUserId);
-      closeRatingModal();
-    } catch (e) {
-      console.error('Rating submit failed', e);
-      await showAlert('Failed to submit rating.');
+    
+    // FIXED: Make comment/feedback mandatory
+    if (!comm || comm.length === 0) {
+      console.log('❌ Comment is required');
+      await showAlert('Please provide feedback/comments about your learning experience.', 'Feedback Required');
+      ratingModalState.isSubmitting = false;
+      return;
     }
-  };
+    
+    if (!currentRatingContext) {
+      console.log('❌ No rating context');
+      await showAlert('Rating context missing.', 'Error');
+      ratingModalState.isSubmitting = false;
+      return;
+    }
+    
+    console.log('⏳ Submitting feedback to Firebase...');
+    // Submit feedback with error handling
+    // Note: submitFeedback will NOT show an alert - we handle it here
+    await submitFeedback(currentRatingContext.sessionId, rating, comm, currentRatingContext.ratedUserId, true);
+    console.log('✅ Firebase submission completed');
+    
+    // Verify overlay still exists before closing
+    const overlayBeforeClose = document.getElementById('ratingOverlay');
+    console.log('✅ Overlay exists before close:', !!overlayBeforeClose);
+    
+    // FIXED: Close modal IMMEDIATELY after successful submission
+    console.log('🚪 Calling closeRatingModal()...');
+    closeRatingModal();
+    console.log('✅ closeRatingModal() completed');
+    
+    // Verify overlay is hidden after close
+    const overlayAfterClose = document.getElementById('ratingOverlay');
+    if (overlayAfterClose) {
+      console.log('📊 After close - Overlay display:', window.getComputedStyle(overlayAfterClose).display);
+      console.log('📊 After close - Overlay visibility:', window.getComputedStyle(overlayAfterClose).visibility);
+    }
+    
+    // FIXED: Show ONLY ONE success confirmation AFTER modal is closed
+    console.log('📢 Showing success alert (only alert)...');
+    await showAlert('Rating submitted successfully!', 'Success');
+    console.log('✅ User dismissed success alert');
+    
+  } catch (e) {
+    console.error('❌ Error in handleRatingSendClick:', e);
+    console.error('Stack trace:', e.stack);
+    await showAlert('Failed to submit rating. Please try again.', 'Error');
+  } finally {
+    // CRITICAL: Always reset submission flag
+    ratingModalState.isSubmitting = false;
+    console.log('🔓 Rating submission lock released');
+  }
 }
 
 function closeRatingModal() {
+  console.log('🚪 closeRatingModal() called');
+  
   const overlay = document.getElementById('ratingOverlay');
-  if (overlay) overlay.classList.add('hidden');
+  if (!overlay) {
+    console.error('❌ CRITICAL: Rating modal overlay not found! Element ID "ratingOverlay" does not exist');
+    return;
+  }
+  
+  console.log('✅ Found overlay element:', overlay);
+  console.log('📊 Overlay HTML:', overlay.outerHTML.substring(0, 100));
+  
+  // FIXED: Use MULTIPLE aggressive hiding methods
+  // Method 1: Hide the overlay container
+  overlay.classList.add('hidden');
+  overlay.style.setProperty('display', 'none', 'important');
+  overlay.style.setProperty('visibility', 'hidden', 'important');
+  overlay.style.setProperty('opacity', '0', 'important');
+  overlay.style.setProperty('pointer-events', 'none', 'important');
+  
+  // Method 2: Also hide/collapse the inner card to be extra sure
+  const innerCard = overlay.querySelector('div');
+  if (innerCard) {
+    innerCard.style.setProperty('display', 'none', 'important');
+    console.log('✅ Hidden inner card');
+  }
+  
+  // Method 3: Move overlay off-screen as final fallback
+  overlay.style.setProperty('position', 'fixed', 'important');
+  overlay.style.setProperty('left', '-9999px', 'important');
+  overlay.style.setProperty('top', '-9999px', 'important');
+  
+  console.log('✅ Applied aggressive hide methods');
+  console.log('📊 Overlay display style:', window.getComputedStyle(overlay).display);
+  console.log('📊 Overlay visibility style:', window.getComputedStyle(overlay).visibility);
+  
+  // FIXED: Reset form fields for next open
+  const select = document.getElementById('ratingSelect');
+  const comment = document.getElementById('ratingComment');
+  if (select) {
+    select.value = '5';
+    console.log('✅ Reset rating select');
+  }
+  if (comment) {
+    comment.value = '';
+    console.log('✅ Reset comment field');
+  }
+  
+  // FIXED: Reset context
   currentRatingContext = null;
+  console.log('✅ Cleared rating context');
+  
+  // FIXED: Reset submission flag
+  ratingModalState.isSubmitting = false;
+  console.log('✅ Reset submission flag');
+  
+  console.log('✅ Rating modal closed and reset completely');
 }
+
 
 
 // ================= BROWSE: mentor card + populate =================
@@ -1215,7 +1511,8 @@ async function populateChatHeader(sessionId, currentUid) {
 // ================= FEEDBACK + RANKING =================
 // Submit feedback after a session
 // reviewer submits a rating for the other participant
-async function submitFeedback(sessionId, rating, comment = '', ratedUserId = null) {
+// skipAlert: if true, don't show success alert (caller will handle it)
+async function submitFeedback(sessionId, rating, comment = '', ratedUserId = null, skipAlert = false) {
   const user = auth.currentUser;
   if (!user) {
     await showAlert("You must be logged in to submit feedback.");
@@ -1293,7 +1590,11 @@ async function submitFeedback(sessionId, rating, comment = '', ratedUserId = nul
       console.warn('Failed to update session rating flags/completion', e);
     }
 
-    await showAlert("Rating submitted", "Success");
+    // FIXED: Only show alert if not skipped (caller handles it)
+    if (!skipAlert) {
+      await showAlert("Rating submitted", "Success");
+    }
+    
     // refresh UI where relevant
     const currentUid = auth.currentUser.uid;
     if (window.location.pathname.includes('home.html')) {
@@ -1360,59 +1661,126 @@ window.getRankedTeachers = async function () {
 };
 
 
-// ================= AUTH ROUTING & PAGE HOOKS =================
-onAuthStateChanged(auth, (user) => {
-  console.log("onAuthStateChanged user:", user);
+// ================= AUTH GUARD: Initial Page Load Check =================
+// This runs ONCE per page load and waits for Firebase to restore the session
+// It prevents the race condition where onAuthStateChanged fires before session restore
 
-  if (!user) {
-    const protectedPages = ['profile.html','home.html','browse.html','view-requests.html','chat.html'];
-    if (protectedPages.some(p => window.location.pathname.includes(p))) {
-      window.location.href = "index.html";
-    }
+let authGuardExecuted = false; // Prevent multiple executions on same page
+
+function initAuthGuard() {
+  // Protected pages that require authentication
+  const protectedPages = ['profile.html', 'home.html', 'browse.html', 'view-requests.html', 'chat.html'];
+  const isProtectedPage = protectedPages.some(p => window.location.pathname.includes(p));
+
+  if (!isProtectedPage) {
+    // Public pages (index, signin, signup) don't need guarding
     return;
   }
 
-  const uid = user.uid;
-  const initial = (user.displayName && user.displayName[0]) ? user.displayName[0].toUpperCase() : (user.email ? user.email[0].toUpperCase() : 'U');
-  const profileAvatar = document.getElementById("profileAvatar");
-  const sidebarAvatar = document.getElementById("sidebarAvatar");
-  const sidebarAvatarSmall = document.getElementById("sidebarAvatarSmall");
-  if (profileAvatar) profileAvatar.textContent = initial;
-  if (sidebarAvatar) sidebarAvatar.textContent = initial;
-  if (sidebarAvatarSmall) sidebarAvatarSmall.textContent = initial;
-
-  if (window.location.pathname.includes("home.html")) {
-    showDashboard();
-    populateDashboardFor(uid, user.email, user);
+  if (authGuardExecuted) {
+    // Guard already executed on this page load
+    return;
   }
 
-  if (window.location.pathname.includes("profile.html")) {
-    const params = new URLSearchParams(window.location.search);
-    const profileUid = params.get('uid') || uid;
-    populateProfileFor(profileUid, user);
+  authGuardExecuted = true;
+
+  // Use currentUser if available (already restored), otherwise wait for listener
+  if (auth.currentUser) {
+    // Session already restored, proceed
+    console.log("Auth guard: currentUser already available", auth.currentUser.uid);
+    return;
   }
 
-  if (window.location.pathname.includes("browse.html")) {
-    populateBrowsePage(uid);
-  }
+  // Sessions not yet restored. Register ONE-TIME listener to wait for restoration.
+  // This listener will ONLY check auth state once, then unsubscribe.
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    unsubscribe(); // CRITICAL: unsubscribe immediately to prevent re-triggering
 
-  if (window.location.pathname.includes("view-requests.html")) {
-    populateRequestsPage(uid);
-  }
+    if (!user) {
+      // Confirmed: user is NOT authenticated (no session, not logged in)
+      console.log("Auth guard: User not authenticated, redirecting to index");
+      window.location.href = "index.html";
+    } else {
+      // Confirmed: user IS authenticated, proceed with page load
+      console.log("Auth guard: User authenticated, allowing access", user.uid);
+    }
+  });
+}
 
-  if (window.location.pathname.includes("chat.html")) {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('sessionId');
-    if (!sessionId) { showAlert('No session specified.'); return; }
-    get(ref(database, `sessions/${sessionId}`)).then(async snap => {
-      if (!snap.exists()) { showAlert('Session not found'); return; }
-      const s = snap.val();
-      if (s.teacher !== uid && s.learner !== uid) { showAlert('You are not a participant in this session'); return; }
-      await populateChatHeader(sessionId, uid);
-      listenToChat(sessionId, uid);
-    }).catch(err => {
-      console.error('Session load error', err);
-      showAlert('Could not open chat');
-    });
-  }
-});
+// Execute guard BEFORE any other logic
+initAuthGuard();
+
+
+// ================= AUTH LISTENER: Ongoing Session Monitoring =================
+// This listener ONLY fires if auth state changes (logout, login from another tab, etc.)
+// IMPORTANT: It does NOT fire on page load (that's handled by initAuthGuard above)
+
+let authListenerRegistered = false;
+
+function registerAuthListener() {
+  if (authListenerRegistered) return;
+  authListenerRegistered = true;
+
+  onAuthStateChanged(auth, (user) => {
+    console.log("Auth listener fired (ongoing session monitor):", user ? user.uid : "logged out");
+
+    if (!user) {
+      // User was logged out (either manually or session expired)
+      const protectedPages = ['profile.html', 'home.html', 'browse.html', 'view-requests.html', 'chat.html'];
+      if (protectedPages.some(p => window.location.pathname.includes(p))) {
+        console.log("Auth listener: Session lost, redirecting to index");
+        window.location.href = "index.html";
+      }
+      return;
+    }
+
+    // User is authenticated, populate page-specific content
+    const uid = user.uid;
+    const initial = (user.displayName && user.displayName[0]) ? user.displayName[0].toUpperCase() : (user.email ? user.email[0].toUpperCase() : 'U');
+    const profileAvatar = document.getElementById("profileAvatar");
+    const sidebarAvatar = document.getElementById("sidebarAvatar");
+    const sidebarAvatarSmall = document.getElementById("sidebarAvatarSmall");
+    if (profileAvatar) profileAvatar.textContent = initial;
+    if (sidebarAvatar) sidebarAvatar.textContent = initial;
+    if (sidebarAvatarSmall) sidebarAvatarSmall.textContent = initial;
+
+    if (window.location.pathname.includes("home.html")) {
+      showDashboard();
+      populateDashboardFor(uid, user.email, user);
+    }
+
+    if (window.location.pathname.includes("profile.html")) {
+      const params = new URLSearchParams(window.location.search);
+      const profileUid = params.get('uid') || uid;
+      populateProfileFor(profileUid, user);
+    }
+
+    if (window.location.pathname.includes("browse.html")) {
+      populateBrowsePage(uid);
+    }
+
+    if (window.location.pathname.includes("view-requests.html")) {
+      populateRequestsPage(uid);
+    }
+
+    if (window.location.pathname.includes("chat.html")) {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('sessionId');
+      if (!sessionId) { showAlert('No session specified.'); return; }
+      get(ref(database, `sessions/${sessionId}`)).then(async snap => {
+        if (!snap.exists()) { showAlert('Session not found'); return; }
+        const s = snap.val();
+        if (s.teacher !== uid && s.learner !== uid) { showAlert('You are not a participant in this session'); return; }
+        await populateChatHeader(sessionId, uid);
+        listenToChat(sessionId, uid);
+      }).catch(err => {
+        console.error('Session load error', err);
+        showAlert('Could not open chat');
+      });
+    }
+  });
+}
+
+// Register the ongoing listener AFTER the initial guard has resolved
+// Add small delay to allow guard to complete
+setTimeout(registerAuthListener, 0);
