@@ -1,4 +1,4 @@
-// ================= FIREBASE IMPORTS =================
+    // ================= FIREBASE IMPORTS =================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 
 import {
@@ -21,6 +21,7 @@ import {
   onChildAdded
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ================= FIREBASE CONFIG =================
 const firebaseConfig = {
@@ -34,7 +35,8 @@ const firebaseConfig = {
 
 // ================= INITIALIZE FIREBASE =================
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Explicitly set persistence to LOCAL (browserLocalPersistence)
 // useful for ensuring state remains after page reloads or new tabs
@@ -83,13 +85,23 @@ window.signupUser = async function (event) {
       offer: offer,
       learn: learn,
       // rating fields: avgRating shows 1 initially, totalRatings 0 (no reviews yet)
-      avgRating: 1,
+      avgRating: 0,
       totalRatings: 0,
       sessionsCompleted: 0
     });
     if (message) { message.style.color = "green"; message.textContent = "Signup successful! Redirecting..."; }
     console.log('signup success', uid);
-    setTimeout(() => window.location.href = "index.html", 800);
+    if (message) {
+      message.style.color = "green";
+      message.textContent = "Signup successful! Please sign in.";
+    }
+
+await signOut(auth);
+
+setTimeout(() => {
+  window.location.href = "signin.html";
+}, 800);
+
   } catch (error) {
     console.error('signup error', error);
     if (message) { message.style.color = "red"; message.textContent = error.message || 'Signup failed'; }
@@ -198,6 +210,7 @@ function hideDashboard() {
   if (dashboard) dashboard.classList.add("hidden");
   if (publicHero) publicHero.classList.remove("hidden");
 }
+
 
 
 // ================= GLOBAL CENTERED MODAL (confirm/alert) =================
@@ -820,7 +833,7 @@ async function populateBrowsePage(currentUid) {
 
     if (!container) return;
 
-    container.innerHTML = '<p class="text-gray-400">Loading mentors…</p>';
+   
 
     const usersSnap = await get(ref(database, "users"));
     let mentors = [];
@@ -1437,7 +1450,7 @@ function listenToChat(sessionId, currentUid) {
   const input = document.getElementById("messageInput");
   const sendBtn = document.getElementById("sendMessageBtn");
   if (!list) return;
-  list.innerHTML = '<p class="text-gray-400">Loading messages…</p>';
+  
 
   const messagesRef = ref(database, `chats/${sessionId}/messages`);
   onChildAdded(messagesRef, (snap) => {
@@ -1500,7 +1513,7 @@ async function populateChatHeader(sessionId, currentUid) {
 
     titleEl.innerHTML = `
       <div class="font-semibold text-xl">Chat with ${escapeHtml(name)}</div>
-      <div class="text-sm text-gray-400 mt-1">Learning: ${escapeHtml(skill)}<br>Contact: ${escapeHtml(finalEmail)}</div>
+      <div class="text-sm text-gray-400 mt-1">Contact: ${escapeHtml(finalEmail)}</div>
     `;
   } catch (e) {
     console.error('populateChatHeader error', e);
