@@ -66,7 +66,7 @@ ML-Based Mentor Ranking
 ⚙️ Installation & Setup
 
 Clone the repository
-git clone https://github.com/your-username/skill-swap-platform.git
+git clone https://github.com/Sidharth-S12/skill-swap-platform.git
 Open project in VS Code
 Configure Firebase
 Open index.html in your browser
