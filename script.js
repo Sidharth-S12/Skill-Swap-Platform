@@ -75,6 +75,19 @@ window.signupUser = async function (event) {
   const offer = offerEl ? offerEl.value.trim() : '';
   const learn = learnEl ? learnEl.value.trim() : '';
 
+  // Validate that the provided skills are in the allowed list (client-side)
+  if (!isValidLanguage(offer) || !isValidLanguage(learn)) {
+    console.warn('Invalid language provided', { offer, learn });
+    if (message) {
+      message.style.color = 'red';
+      message.textContent = 'Please enter valid programming languages for both "Skill you offer" and "Skill you want to learn".';
+    }
+    // show per-field validation UI
+    validateFieldAndShow(offerEl);
+    validateFieldAndShow(learnEl);
+    return;
+  }
+
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const uid = userCredential.user.uid;
@@ -196,6 +209,91 @@ function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
 }
+
+// ================= LANGUAGE VALIDATION (client-side) =================
+// List of allowed programming languages / popular frameworks (case-insensitive)
+const ALLOWED_LANGUAGES = new Set([
+  'html','css','javascript','java','python','c','c++','c#','php','sql','typescript',
+  'ruby','go','rust','kotlin','swift','r','matlab','scala','perl','dart','lua',
+  'bash','shell','powershell',
+  // Popular libraries/frameworks / runtimes included intentionally
+  'react','vue','angular','svelte','node.js','node','express','next.js','nuxt','django','flask','asp.net',
+  'graphql'
+].map(s => s.toLowerCase()));
+
+// Simple alias map for common shortnames
+const LANGUAGE_ALIASES = {
+  'js': 'javascript',
+  'ts': 'typescript',
+  'nodejs': 'node.js',
+  'csharp': 'c#',
+  'cpp': 'c++',
+  'py': 'python',
+  'html5': 'html'
+};
+
+function normalizeLang(input) {
+  if (!input) return '';
+  return input.trim().toLowerCase();
+}
+
+function isValidLanguage(input) {
+  const n = normalizeLang(input);
+  if (!n) return false;
+  if (ALLOWED_LANGUAGES.has(n)) return true;
+  if (LANGUAGE_ALIASES[n] && ALLOWED_LANGUAGES.has(LANGUAGE_ALIASES[n])) return true;
+  return false;
+}
+
+// UI helpers: attach an error message element next to a field and toggle messages
+function ensureFieldErrorEl(field) {
+  if (!field) return null;
+  let el = field.nextElementSibling;
+  if (el && el.classList && el.classList.contains('field-error')) return el;
+  // create error element
+  el = document.createElement('div');
+  el.className = 'field-error text-red-400 text-sm mt-1';
+  field.parentNode.insertBefore(el, field.nextSibling);
+  return el;
+}
+
+function validateFieldAndShow(field) {
+  if (!field) return false;
+  const val = field.value || '';
+  const msgEl = ensureFieldErrorEl(field);
+  if (!val) {
+    if (msgEl) msgEl.textContent = '';
+    field.classList.remove('border-red-500');
+    return false;
+  }
+  if (isValidLanguage(val)) {
+    if (msgEl) msgEl.textContent = '';
+    field.classList.remove('border-red-500');
+    return true;
+  } else {
+    if (msgEl) msgEl.textContent = 'Please enter a valid programming language.';
+    field.classList.add('border-red-500');
+    return false;
+  }
+}
+
+// Attach realtime validation to a field by id
+function attachLanguageValidationToField(fieldId) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  // validate while typing
+  field.addEventListener('input', () => validateFieldAndShow(field));
+  // validate on blur as well
+  field.addEventListener('blur', () => validateFieldAndShow(field));
+  // create the error element now (so layout doesn't jump)
+  ensureFieldErrorEl(field);
+}
+
+// Connect to signup form fields if present on the page
+document.addEventListener('DOMContentLoaded', () => {
+  attachLanguageValidationToField('offer');
+  attachLanguageValidationToField('learn');
+});
 
 function showDashboard() {
   const dashboard = document.getElementById("dashboard");
