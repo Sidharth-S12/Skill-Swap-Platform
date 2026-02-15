@@ -5,13 +5,6 @@
   <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Made%20With-HTML%20%7C%20CSS%20%7C%20JavaScript-orange?style=for-the-badge" />
 </p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/languages/top/your-username/your-repository-name?style=flat-square" />
-  <img src="https://img.shields.io/github/repo-size/your-username/your-repository-name?style=flat-square" />
-  <img src="https://img.shields.io/github/last-commit/your-username/your-repository-name?style=flat-square" />
-</p>
-
 ---
 
 ## 🌟 About The Project  
