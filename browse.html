@@ -85,6 +85,34 @@
 
 <script type="module" src="./script.js"></script>
 
+<script type="module">
+  import { auth } from './script.js';
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+  // FIXED: Wait for Firebase auth to fully initialize before loading browse page
+  let authInitialized = false;
+  
+  onAuthStateChanged(auth, (user) => {
+    if (authInitialized) return; // Prevent multiple calls
+    authInitialized = true;
+    
+    if (!user) {
+      console.log('No user authenticated, redirecting to index');
+      window.location.href = 'index.html';
+      return;
+    }
+    
+    console.log('User authenticated, loading browse page for uid:', user.uid);
+    
+    // Call populateBrowsePage after auth is confirmed
+    if (window.populateBrowsePage) {
+      window.populateBrowsePage(user.uid);
+    } else {
+      console.error('populateBrowsePage function not found');
+    }
+  });
+</script>
+
 <script>
   document.getElementById('clearSearch')?.addEventListener('click', () => {
     const input = document.getElementById('searchInput');

@@ -923,7 +923,7 @@ function createMentorCard(mentor, currentUid) {
 }
 
 let browseCache = [];
-async function populateBrowsePage(currentUid) {
+window.populateBrowsePage = async function(currentUid)  {
   try {
     const container = document.getElementById("mentorsContainer");
     const searchInput = document.getElementById("searchInput");
@@ -931,7 +931,13 @@ async function populateBrowsePage(currentUid) {
 
     if (!container) return;
 
-   
+    // FIXED: Check if user is authenticated before reading
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('User not authenticated');
+      container.innerHTML = '<p class="text-red-400">Please log in to browse mentors.</p>';
+      return;
+    }
 
     const usersSnap = await get(ref(database, "users"));
     let mentors = [];
@@ -987,8 +993,6 @@ async function populateBrowsePage(currentUid) {
     if (container) container.innerHTML = '<p class="text-red-400">Failed to load mentors.</p>';
   }
 }
-
-
 // ================= isConnected: sessions OR accepted requests =================
 async function isConnected(uidA, uidB) {
   try {
