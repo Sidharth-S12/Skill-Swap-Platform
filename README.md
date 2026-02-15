@@ -101,7 +101,7 @@ git clone https://github.com/your-username/your-repository-name.git
 > Replace `your-username` with your GitHub username.
 
 <p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=your-username&show_icons=true&theme=radical"/>
+  <img src="https://github-readme-stats.vercel.app/api?Sidharth-S12&show_icons=true&theme=radical"/>
   <img src="https://github-readme-streak-stats.herokuapp.com/?user=your-username&theme=radical"/>
 </p>
 
