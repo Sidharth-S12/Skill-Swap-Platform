@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>SkillSwap — Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#006064',
+            accent: '#FF7F50'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gradient-to-br from-[#0F172A] via-[#020617] to-[#020617] text-gray-200 min-h-screen overflow-x-hidden">
+
+  <nav class="sticky top-0 z-50 backdrop-blur-lg bg-[#020617]/80 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <div id="sidebarAvatarSmall"
+          class="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center font-bold text-white text-lg">
+          S
+        </div>
+        <span class="text-xl font-semibold">SkillSwap</span>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <a href="home.html" class="text-sm">Dashboard</a>
+        <a href="browse.html" class="text-sm">Browse</a>
+        <a href="profile.html" class="text-sm">Profile</a>
+        <a href="view-requests.html" class="text-sm">Requests</a>
+        <button onclick="logout()"
+          class="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10 transition">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-6 py-10">
+    <h1 id="chatTitle" class="text-2xl font-semibold mb-4">Chat</h1>
+
+    <div id="messagesList" class="bg-white/5 border border-white/10 rounded-md p-4 h-72 overflow-auto mb-4">
+      <p class="text-gray-400">Loading messages…</p>
+    </div>
+    <div class="flex gap-3">
+      <input id="messageInput" placeholder="Write a message — you can paste Google Meet links or other links"
+        class="flex-1 px-4 py-3 rounded-md bg-[#020617] border border-white/10 text-gray-200" />
+      <button id="sendMessageBtn" class="px-4 py-3 bg-primary rounded-md text-white">Send</button>
+    </div>
+
+    <p class="text-gray-400 mt-4 text-sm">Tips: paste Google Meet links directly (they will become clickable). Keep
+      messages civil.</p>
+  </main>
+
+  <script type="module" src="../backend/script.js"></script>
+</body>
+
+</html>
