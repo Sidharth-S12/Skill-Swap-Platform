@@ -1,3 +1,73 @@
+// ================= LANGUAGE VALIDATION (client-side) =================
+
+// ================= EMAIL VALIDATION =================
+
+// List of allowed email domains (popular providers only)
+const ALLOWED_EMAIL_DOMAINS = new Set([
+    'gmail.com',
+    'yahoo.com',
+    'outlook.com',
+    'hotmail.com',
+    'icloud.com',
+    'protonmail.com',
+    'aol.com',
+    'mail.com',
+    'zoho.com',
+    'yandex.com',
+    'gmx.com',
+    'live.com',
+    'msn.com',
+    'yahoo.co.in',
+    'yahoo.co.uk',
+    'rediffmail.com',
+    'fastmail.com'
+]);
+
+export function isValidEmail(email) {
+    if (!email || typeof email !== 'string') return false;
+    
+    // Basic email regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    
+    if (!emailRegex.test(email)) return false;
+    
+    // Extract domain
+    const domain = email.split('@')[1];
+    if (!domain) return false;
+    
+    // Convert to lowercase for comparison
+    const domainLower = domain.toLowerCase();
+    
+    // Check if domain is in allowed list
+    if (!ALLOWED_EMAIL_DOMAINS.has(domainLower)) {
+        return false;
+    }
+    
+    return true;
+}
+
+export function getEmailValidationError(email) {
+    if (!email || typeof email !== 'string') {
+        return 'Email is required';
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(email)) {
+        return 'Please enter a valid email format';
+    }
+    
+    const domain = email.split('@')[1];
+    if (!domain) {
+        return 'Invalid email domain';
+    }
+    
+    const domainLower = domain.toLowerCase();
+    if (!ALLOWED_EMAIL_DOMAINS.has(domainLower)) {
+        return 'Please use an email from a supported provider (Gmail, Yahoo, Outlook, etc.)';
+    }
+    
+    return null; // No error
+}
 
 // ================= LANGUAGE VALIDATION (client-side) =================
 
@@ -82,4 +152,39 @@ export function attachLanguageValidationToField(fieldId) {
     field.addEventListener('blur', () => validateFieldAndShow(field));
     // create the error element now (so layout doesn't jump)
     ensureFieldErrorEl(field);
+}
+
+// Attach email validation to email field
+export function attachEmailValidationToField(fieldId) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    
+    const errorEl = ensureFieldErrorEl(field);
+    
+    const validate = () => {
+        const email = field.value.trim();
+        if (!email) {
+            if (errorEl) errorEl.textContent = '';
+            field.classList.remove('border-red-500');
+            field.classList.remove('border-green-500');
+            return false;
+        }
+        
+        const error = getEmailValidationError(email);
+        
+        if (!error) {
+            if (errorEl) errorEl.textContent = '';
+            field.classList.remove('border-red-500');
+            field.classList.add('border-green-500');
+            return true;
+        } else {
+            if (errorEl) errorEl.textContent = error;
+            field.classList.add('border-red-500');
+            field.classList.remove('border-green-500');
+            return false;
+        }
+    };
+    
+    field.addEventListener('input', validate);
+    field.addEventListener('blur', validate);
 }

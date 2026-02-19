@@ -28,6 +28,7 @@ window.registerAuthListener = AuthService.registerAuthListener;
 
 // Validators
 window.attachLanguageValidationToField = Validators.attachLanguageValidationToField;
+window.attachEmailValidationToField = Validators.attachEmailValidationToField;
 window.splitSkills = Validators.splitSkills;
 
 // UI Functions
@@ -81,6 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Attaching language validators...');
     Validators.attachLanguageValidationToField('offer');
     Validators.attachLanguageValidationToField('learn');
+  }
+  
+  // Attach email validator if on signup page
+  if (document.getElementById('email')) {
+    console.log('Attaching email validator...');
+    Validators.attachEmailValidationToField('email');
   }
 });
 
