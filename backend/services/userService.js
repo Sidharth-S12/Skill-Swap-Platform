@@ -218,8 +218,8 @@ export async function populateBrowsePage(currentUid) {
                 const tokens = q.split(/\s+/).filter(Boolean);
                 const filtered = browseCache.filter(m => {
                     const offerStr = (m.offer || '').toLowerCase();
-                    const learnStr = (m.learn || '').toLowerCase();
-                    return tokens.every(t => offerStr.includes(t) || learnStr.includes(t));
+                    // ✅ FIXED: Only search in "offer" (what they teach), not "learn"
+                    return tokens.every(t => offerStr.includes(t));
                 });
                 render(filtered);
             };
@@ -348,9 +348,17 @@ export async function populateDashboardFor(uid, currentUserEmail, firebaseUser) 
             const userData = userRatingSnap.val();
             const avgRating = userData.avgRating || 0;
             const totalRatings = userData.totalRatings || 0;
+            
+            console.log(`[Dashboard] User ${uid} rating data:`, {
+                avgRating,
+                totalRatings,
+                sessionsCompleted: userData.sessionsCompleted
+            });
+            
             // ✅ SHOW RATING WITH COUNT
             setText("rating", totalRatings > 0 ? `${avgRating.toFixed(1)}/5 (${totalRatings})` : 'N/A');
         } else {
+            console.log(`[Dashboard] No user data found for ${uid}`);
             setText("rating", 'N/A');
         }
 

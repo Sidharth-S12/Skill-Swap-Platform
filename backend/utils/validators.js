@@ -103,11 +103,25 @@ export function normalizeLang(input) {
 }
 
 export function isValidLanguage(input) {
-    const n = normalizeLang(input);
-    if (!n) return false;
-    if (ALLOWED_LANGUAGES.has(n)) return true;
-    if (LANGUAGE_ALIASES[n] && ALLOWED_LANGUAGES.has(LANGUAGE_ALIASES[n])) return true;
-    return false;
+    if (!input || typeof input !== 'string') return false;
+    
+    // Split by comma to handle multiple skills
+    const skills = splitSkills(input);
+    
+    // If empty after splitting, invalid
+    if (skills.length === 0) return false;
+    
+    // Check each skill individually
+    for (const skill of skills) {
+        const n = normalizeLang(skill);
+        if (!n) return false; // Empty skill
+        
+        // Check if this individual skill is valid
+        const isValid = ALLOWED_LANGUAGES.has(n) || (LANGUAGE_ALIASES[n] && ALLOWED_LANGUAGES.has(LANGUAGE_ALIASES[n]));
+        if (!isValid) return false; // One invalid skill makes whole input invalid
+    }
+    
+    return true; // All skills are valid
 }
 
 // UI helpers: attach an error message element next to a field and toggle messages
@@ -129,15 +143,24 @@ export function validateFieldAndShow(field) {
     if (!val) {
         if (msgEl) msgEl.textContent = '';
         field.classList.remove('border-red-500');
+        field.classList.remove('border-green-500');
         return false;
     }
     if (isValidLanguage(val)) {
         if (msgEl) msgEl.textContent = '';
         field.classList.remove('border-red-500');
+        field.classList.add('border-green-500');
         return true;
     } else {
-        if (msgEl) msgEl.textContent = 'Please enter a valid programming language.';
+        // Show better error message for multiple skills
+        const skills = splitSkills(val);
+        if (skills.length > 1) {
+            if (msgEl) msgEl.textContent = 'One or more skills are not recognized. Use valid programming languages separated by commas.';
+        } else {
+            if (msgEl) msgEl.textContent = 'Please enter valid programming languages (e.g., Python, JavaScript, Java). Separate multiple skills with commas.';
+        }
         field.classList.add('border-red-500');
+        field.classList.remove('border-green-500');
         return false;
     }
 }

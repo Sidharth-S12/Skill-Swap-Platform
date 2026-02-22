@@ -1,13 +1,13 @@
+
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     signOut,
-    onAuthStateChanged,
-    sendEmailVerification
+    onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { auth, database } from "../config/firebaseConfig.js";
-import { isValidLanguage, validateFieldAndShow, isValidEmail } from "../utils/validators.js";
+import { isValidLanguage, validateFieldAndShow } from "../utils/validators.js";
 import { showDashboard, hideDashboard, showAlert, setText } from "../utils/uiHelpers.js";
 
 // We need to import these to populate UI on auth state change
@@ -46,18 +46,6 @@ export async function signupUser(event) {
     const offer = offerEl ? offerEl.value.trim() : '';
     const learn = learnEl ? learnEl.value.trim() : '';
 
-    // Validate email format
-    if (!isValidEmail(email)) {
-        console.warn('Invalid email provided', email);
-        const errorMsg = 'Please use an email from a supported provider (Gmail, Yahoo, Outlook, Hotmail, iCloud, etc.)';
-        if (message) {
-            message.style.color = 'red';
-            message.textContent = errorMsg;
-        }
-        emailEl.classList.add('border-red-500');
-        return;
-    }
-
     // Validate that the provided skills are in the allowed list (client-side)
     if (!isValidLanguage(offer) || !isValidLanguage(learn)) {
         console.warn('Invalid language provided', { offer, learn });
@@ -74,38 +62,29 @@ export async function signupUser(event) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
-        
-        // Send email verification
-        await sendEmailVerification(userCredential.user);
-        
-        // Save user data to database
+        // New users: set average rating visible as 1, but zero rated reviews initially.
         await set(ref(database, "users/" + uid), {
             name: name,
             email: email,
             offer: offer,
             learn: learn,
+            // rating fields: avgRating shows 1 initially, totalRatings 0 (no reviews yet)
             avgRating: 0,
             totalRatings: 0,
-            sessionsCompleted: 0,
-            emailVerified: false
+            sessionsCompleted: 0
         });
-        
-        if (message) { 
-            message.style.color = "green"; 
-            message.innerHTML = `
-                ✅ Account created successfully!<br><br>
-                📧 We've sent a verification email to <strong>${email}</strong><br><br>
-                <span style="color: #fbbf24;">⚠️ Please check your <strong>Spam/Junk folder</strong> if you don't see it in your inbox.</span><br><br>
-                Click the link in the email to verify your account, then sign in.
-            `;
+        if (message) { message.style.color = "green"; message.textContent = "Signup successful! Redirecting..."; }
+        console.log('signup success', uid);
+        if (message) {
+            message.style.color = "green";
+            message.textContent = "Signup successful! Please sign in.";
         }
-        console.log('signup success, verification email sent to', email);
 
-        // Sign out immediately so they must verify before signing in
         await signOut(auth);
 
-        // Don't auto-redirect - let them read the message
-        // They'll manually go to sign in after verifying email
+        setTimeout(() => {
+            window.location.href = "signin.html";
+        }, 800);
 
     } catch (error) {
         console.error('signup error', error);
@@ -135,23 +114,6 @@ export function loginUser(event) {
     signInWithEmailAndPassword(auth, email, password)
         .then((userCredential) => {
             console.log('signIn success', userCredential.user.uid);
-            
-            // Check if email is verified
-            if (!userCredential.user.emailVerified) {
-                console.log('Email not verified yet');
-                if (message) {
-                    message.style.color = "orange";
-                    message.innerHTML = `
-                        ⚠️ Please verify your email first.<br><br>
-                        Check your inbox at <strong>${email}</strong> for the verification link.<br><br>
-                        <span style="color: #fbbf24;">📁 Don't forget to check your <strong>Spam/Junk folder</strong>!</span>
-                    `;
-                }
-                // Sign them out since email not verified
-                signOut(auth);
-                return;
-            }
-            
             if (message) { message.style.color = "green"; message.textContent = "Login successful! Redirecting..."; }
             setTimeout(() => { window.location.href = "home.html"; }, 200);
         })
