@@ -337,7 +337,7 @@ export async function populateRequestsPage(currentUid) {
 }
 
 // ================= MENTOR CARD =================
-export function createMentorCard(mentor, currentUid) {
+export async function createMentorCard(mentor,currentUid) {
     const card = document.createElement('div');
     card.className = "bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start";
 
@@ -380,6 +380,13 @@ export function createMentorCard(mentor, currentUid) {
     left.appendChild(name);
     left.appendChild(email);
     left.appendChild(meta);
+    // ML score badge
+    if (mentor.mlScore && mentor.mlScore > 0) {
+    // @ts-ignore
+    const { createMLScoreBadge } = await import("./mlRankingService.js");
+    const badge = createMLScoreBadge(mentor.mlScore, mentor.sentiment || null);
+    left.appendChild(badge);
+}
     left.appendChild(teachDiv);
     left.appendChild(learnDiv);
 

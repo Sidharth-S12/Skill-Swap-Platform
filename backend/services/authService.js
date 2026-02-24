@@ -1,27 +1,14 @@
-
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     signOut,
-    onAuthStateChanged
+    onAuthStateChanged,
+    sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { auth, database } from "../config/firebaseConfig.js";
-import { isValidLanguage, validateFieldAndShow } from "../utils/validators.js";
+import { isValidLanguage, validateFieldAndShow, isValidEmail } from "../utils/validators.js";
 import { showDashboard, hideDashboard, showAlert, setText } from "../utils/uiHelpers.js";
-
-// We need to import these to populate UI on auth state change
-// Ideally these should be injected or listener attached in script.js, 
-// but to keep script.js small we might need a centralized way.
-// For now, we will export the listener setup and let script.js pass the callbacks or we import them if possible.
-// Circular dependencies are bad. script.js imports authService. authService shouldn't import script.js.
-// We will emit events or accepts callbacks for UI updates.
-// OR, we lazily import user/request services? 
-// No, better to have a `router.js` or `app.js` that coordinates?
-// The prompt asks for specific file structure.
-
-// We will implement the functions and export them.
-// The UI event listeners in script.js will call these.
 
 export async function signupUser(event) {
     event.preventDefault();
@@ -46,14 +33,24 @@ export async function signupUser(event) {
     const offer = offerEl ? offerEl.value.trim() : '';
     const learn = learnEl ? learnEl.value.trim() : '';
 
-    // Validate that the provided skills are in the allowed list (client-side)
+    // Validate email
+    if (!isValidEmail(email)) {
+        console.warn('Invalid email provided', email);
+        if (message) {
+            message.style.color = 'red';
+            message.textContent = 'Please use an email from a supported provider (Gmail, Yahoo, Outlook, etc.)';
+        }
+        emailEl.classList.add('border-red-500');
+        return;
+    }
+
+    // Validate skills
     if (!isValidLanguage(offer) || !isValidLanguage(learn)) {
         console.warn('Invalid language provided', { offer, learn });
         if (message) {
             message.style.color = 'red';
-            message.textContent = 'Please enter valid programming languages for both "Skill you offer" and "Skill you want to learn".';
+            message.textContent = 'Please enter valid programming languages for both skills.';
         }
-        // show per-field validation UI
         validateFieldAndShow(offerEl);
         validateFieldAndShow(learnEl);
         return;
@@ -62,29 +59,35 @@ export async function signupUser(event) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
-        // New users: set average rating visible as 1, but zero rated reviews initially.
+        
+        // Send email verification
+        await sendEmailVerification(userCredential.user);
+        
+        // Save user data
         await set(ref(database, "users/" + uid), {
             name: name,
             email: email,
             offer: offer,
             learn: learn,
-            // rating fields: avgRating shows 1 initially, totalRatings 0 (no reviews yet)
             avgRating: 0,
             totalRatings: 0,
-            sessionsCompleted: 0
+            sessionsCompleted: 0,
+            emailVerified: false
         });
-        if (message) { message.style.color = "green"; message.textContent = "Signup successful! Redirecting..."; }
-        console.log('signup success', uid);
-        if (message) {
-            message.style.color = "green";
-            message.textContent = "Signup successful! Please sign in.";
+        
+        if (message) { 
+            message.style.color = "green"; 
+            message.innerHTML = `
+                ✅ Account created successfully!<br><br>
+                📧 We've sent a verification email to <strong>${email}</strong><br><br>
+                <span style="color: #fbbf24;">⚠️ Please check your <strong>Spam/Junk folder</strong> if you don't see it in your inbox.</span><br><br>
+                Click the link in the email to verify your account, then sign in.
+            `;
         }
+        console.log('signup success, verification email sent to', email);
 
+        // Sign out so they must verify first
         await signOut(auth);
-
-        setTimeout(() => {
-            window.location.href = "signin.html";
-        }, 800);
 
     } catch (error) {
         console.error('signup error', error);
@@ -114,6 +117,22 @@ export function loginUser(event) {
     signInWithEmailAndPassword(auth, email, password)
         .then((userCredential) => {
             console.log('signIn success', userCredential.user.uid);
+            
+            // Check if email is verified
+            if (!userCredential.user.emailVerified) {
+                console.log('Email not verified yet');
+                if (message) {
+                    message.style.color = "orange";
+                    message.innerHTML = `
+                        ⚠️ Please verify your email first.<br><br>
+                        Check your inbox at <strong>${email}</strong> for the verification link.<br><br>
+                        <span style="color: #fbbf24;">📁 Don't forget to check your <strong>Spam/Junk folder</strong>!</span>
+                    `;
+                }
+                signOut(auth);
+                return;
+            }
+            
             if (message) { message.style.color = "green"; message.textContent = "Login successful! Redirecting..."; }
             setTimeout(() => { window.location.href = "home.html"; }, 200);
         })
@@ -138,12 +157,10 @@ export function logout() {
 let authGuardExecuted = false;
 
 export function initAuthGuard() {
-    // Protected pages that require authentication
     const protectedPages = ['profile.html', 'home.html', 'browse.html', 'view-requests.html', 'chat.html'];
     const isProtectedPage = protectedPages.some(p => window.location.pathname.includes(p));
 
-    if (!isProtectedPage) return; // Public pages
-
+    if (!isProtectedPage) return;
     if (authGuardExecuted) return;
     authGuardExecuted = true;
 
@@ -153,7 +170,7 @@ export function initAuthGuard() {
     }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-        unsubscribe(); // One-time check
+        unsubscribe();
         if (!user) {
             console.log("Auth guard: User not authenticated, redirecting to index");
             window.location.href = "index.html";
@@ -166,7 +183,6 @@ export function initAuthGuard() {
 // ================= AUTH LISTENER =================
 let authListenerRegistered = false;
 
-// We allow passing callbacks to update UI from other modules to avoid circular imports
 export function registerAuthListener(callbacks = {}) {
     if (authListenerRegistered) return;
     authListenerRegistered = true;
@@ -183,11 +199,9 @@ export function registerAuthListener(callbacks = {}) {
             return;
         }
 
-        // User is authenticated, trigger UI updates
         const uid = user.uid;
         const initial = (user.displayName && user.displayName[0]) ? user.displayName[0].toUpperCase() : (user.email ? user.email[0].toUpperCase() : 'U');
 
-        // Update generic Avatar elements if they exist
         const profileAvatar = document.getElementById("profileAvatar");
         const sidebarAvatar = document.getElementById("sidebarAvatar");
         const sidebarAvatarSmall = document.getElementById("sidebarAvatarSmall");
@@ -195,7 +209,6 @@ export function registerAuthListener(callbacks = {}) {
         if (sidebarAvatar) sidebarAvatar.textContent = initial;
         if (sidebarAvatarSmall) sidebarAvatarSmall.textContent = initial;
 
-        // Call page specific callbacks
         if (window.location.pathname.includes("home.html")) {
             showDashboard();
             if (callbacks.onDashboard) callbacks.onDashboard(uid, user);

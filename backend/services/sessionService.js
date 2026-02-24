@@ -9,27 +9,26 @@ export function createSessionCard(session, otherUser, currentUid) {
     const isCurrentTeacher = (currentUid === session.teacher);
     const roleLabel = isCurrentTeacher ? 'Teaching:' : 'Learning:';
 
-    const teacherName = session.teacherName || (session.teacher === otherUser?.uid ? otherUser.name : null);
-    const learnerName = session.learnerName || (session.learner === otherUser?.uid ? otherUser.name : null);
-
+    // otherUser is the partner — derive name/contact from session data
     const roleName = isCurrentTeacher
-        ? (learnerName || (otherUser && otherUser.uid === session.learner ? otherUser.name : 'Learner'))
-        : (teacherName || (otherUser && otherUser.uid === session.teacher ? otherUser.name : 'Teacher'));
+        ? (session.learnerName || otherUser?.name || 'Learner')
+        : (session.teacherName || otherUser?.name || 'Teacher');
 
     const contact = isCurrentTeacher
-        ? (session.learnerEmail || otherUser?.email || session.contact || '—')
-        : (session.teacherEmail || otherUser?.email || session.contact || '—');
+        ? (session.learnerEmail || otherUser?.email || '—')
+        : (session.teacherEmail || otherUser?.email || '—');
 
     const teacherRated = !!session.teacherRated;
     const learnerRated = !!session.learnerRated;
 
-    const reviewerHasRated = (currentUid === session.teacher) ? teacherRated : learnerRated;
-    const partnerHasRated = (currentUid === session.teacher) ? learnerRated : teacherRated;
+    // currentUid is the logged-in user — check if THEY have rated
+    const reviewerHasRated = isCurrentTeacher ? teacherRated : learnerRated;
+    const partnerHasRated  = isCurrentTeacher ? learnerRated : teacherRated;
 
     const left = document.createElement("div");
     left.innerHTML = `
     <div class="text-lg font-semibold">${escapeHtml(session.skill || '')}</div>
-    <div class="text-sm text-gray-300">${escapeHtml(roleLabel)} ${escapeHtml(roleName || '')}</div>
+    <div class="text-sm text-gray-300">${escapeHtml(roleLabel)} ${escapeHtml(roleName)}</div>
     <div class="text-sm text-gray-400">Contact: ${escapeHtml(contact)}</div>
   `;
 
@@ -53,7 +52,6 @@ export function createSessionCard(session, otherUser, currentUid) {
         right.appendChild(chatBtn);
     }
 
-    // ✅ FIXED: Check if already rated
     if (!reviewerHasRated) {
         const rateBtn = document.createElement("button");
         rateBtn.className = "px-3 py-1 rounded-md bg-primary text-white text-sm";
@@ -62,32 +60,34 @@ export function createSessionCard(session, otherUser, currentUid) {
             const sid = session.id || session.sessionId;
             if (!sid) { await showAlert('Session id missing.'); return; }
 
-            // ✅ CHECK IF ALREADY RATED (prevent duplicates)
+            // Double-check in Firebase to prevent duplicates
             const feedbackId = `${sid}_${currentUid}`;
             const fbRef = ref(database, `feedbacks/${feedbackId}`);
             const fbSnap = await get(fbRef);
-
             if (fbSnap.exists()) {
                 await showAlert('You have already rated this session.', 'Already Rated');
                 return;
             }
 
-            const otherUid = (session.teacher === currentUid) ? session.learner : session.teacher;
-            const otherName = (otherUid === session.teacher ? (session.teacherName || '') : (session.learnerName || 'Participant')) || 'Participant';
+            // otherUid = the partner being rated (opposite of currentUid)
+            const otherUid  = isCurrentTeacher ? session.learner  : session.teacher;
+            const otherName = isCurrentTeacher
+                ? (session.learnerName || otherUser?.name || 'Learner')
+                : (session.teacherName || otherUser?.name || 'Teacher');
+
+            console.log(`[Rate] currentUid=${currentUid} rating otherUid=${otherUid} (${otherName})`);
 
             const { openRatingModal } = await import("./ratingService.js");
             openRatingModal(sid, otherUid, otherName);
         };
         right.appendChild(rateBtn);
     } else {
-        // ✅ SHOW RATED STATUS
         const doneBtn = document.createElement("button");
         doneBtn.className = "px-3 py-1 rounded-md border border-white/20 text-sm text-gray-300";
         doneBtn.textContent = "✓ Rated";
         doneBtn.disabled = true;
         right.appendChild(doneBtn);
 
-        // ✅ IF PARTNER HASN'T RATED, SHOW WAITING STATUS
         if (!partnerHasRated) {
             const waitBadge = document.createElement("div");
             waitBadge.className = "text-xs text-yellow-400 bg-yellow-900/20 px-2 py-1 rounded-md";

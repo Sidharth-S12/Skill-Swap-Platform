@@ -1,4 +1,3 @@
-
 import { ref, get, push, set, onChildAdded } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { database, auth } from "../config/firebaseConfig.js";
 import { showAlert, linkify, escapeHtml, setText } from "../utils/uiHelpers.js";
@@ -10,21 +9,31 @@ export function appendMessageToList(msg, currentUid) {
     const list = document.getElementById("messagesList");
     if (!list || !msg) return;
 
-    const item = document.createElement('div');
-    item.className = `mb-2 ${msg.from === currentUid ? 'text-right' : 'text-left'}`;
+    // Remove empty state if present
+    const emptyState = list.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+
+    const isSent = msg.from === currentUid;
+    const time = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = isSent ? 'flex-end' : 'flex-start';
 
     const bubble = document.createElement('div');
-    bubble.className = `${msg.from === currentUid ? 'inline-block bg-primary text-white px-3 py-1 rounded-md' : 'inline-block bg-white/5 px-3 py-1 rounded-md'}`;
+    bubble.className = isSent ? 'msg-sent' : 'msg-received';
     bubble.innerHTML = linkify(msg.text || '');
 
     const meta = document.createElement('div');
-    meta.className = 'text-xs text-gray-400 mt-1';
-    const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : '';
+    meta.className = 'msg-time';
+    meta.style.paddingLeft = isSent ? '0' : '4px';
+    meta.style.paddingRight = isSent ? '4px' : '0';
     meta.textContent = time;
 
-    item.appendChild(bubble);
-    item.appendChild(meta);
-    list.appendChild(item);
+    wrapper.appendChild(bubble);
+    wrapper.appendChild(meta);
+    list.appendChild(wrapper);
     list.scrollTop = list.scrollHeight;
 }
 
@@ -90,10 +99,19 @@ export async function populateChatHeader(sessionId, currentUid) {
             }
         }
 
+        const initial = name ? name[0].toUpperCase() : '?';
         titleEl.innerHTML = `
-      <div class="font-semibold text-xl">Chat with ${escapeHtml(name)}</div>
-      <div class="text-sm text-gray-400 mt-1">Contact: ${escapeHtml(finalEmail)}</div>
-    `;
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[#006064] to-[#FF7F50] flex items-center justify-center font-bold text-white text-sm flex-shrink-0">${initial}</div>
+            <div>
+              <div class="font-semibold text-white text-base">Chat with ${escapeHtml(name)}</div>
+              <div class="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
+                <span class="online-dot"></span>
+                <span>Contact: ${escapeHtml(finalEmail)}</span>
+              </div>
+            </div>
+          </div>
+        `;
     } catch (e) {
         console.error('populateChatHeader error', e);
     }
