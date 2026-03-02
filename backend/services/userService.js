@@ -64,19 +64,32 @@ export async function populateBrowsePage(currentUid) {
 
         await render(mentors);
 
-        if (searchInput) {
-            searchInput.oninput = async () => {
-                const q = searchInput.value.trim().toLowerCase();
-                if (!q) { await render(browseCache); return; }
-                const tokens = q.split(/\s+/).filter(Boolean);
-                const filtered = browseCache.filter(m => {
-                    const offerStr = (m.offer || '').toLowerCase();
-                    // Only search in what they TEACH, not what they want to learn
-                    return tokens.every(t => offerStr.includes(t));
-                });
-                await render(filtered);
-            };
-        }
+if (searchInput) {
+    const doSearch = async () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) { await render(browseCache); return; }
+
+        const filtered = browseCache.filter(m => {
+            const offerRaw = Array.isArray(m.offer)
+                ? m.offer.join(',')
+                : String(m.offer || '');
+
+            const skills = offerRaw
+                .toLowerCase()
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            return skills.some(skill => skill === q);
+        });
+
+        await render(filtered);
+    };
+
+    searchInput.addEventListener('input', doSearch);
+    searchInput.addEventListener('change', doSearch);
+    searchInput.addEventListener('keyup', doSearch);
+}
 
         ensureRequestModal();
 

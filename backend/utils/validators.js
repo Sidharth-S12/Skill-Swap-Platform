@@ -94,7 +94,7 @@ const LANGUAGE_ALIASES = {
 
 export function splitSkills(skillString) {
     if (!skillString) return [];
-    return skillString.split(',').map(s => s.trim()).filter(Boolean);
+    return String(skillString).split(',').map(s => s.trim()).filter(Boolean);
 }
 
 export function normalizeLang(input) {
