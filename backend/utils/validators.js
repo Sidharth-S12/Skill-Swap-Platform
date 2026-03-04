@@ -25,24 +25,24 @@ const ALLOWED_EMAIL_DOMAINS = new Set([
 
 export function isValidEmail(email) {
     if (!email || typeof email !== 'string') return false;
-    
+
     // Basic email regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-    
+
     if (!emailRegex.test(email)) return false;
-    
+
     // Extract domain
     const domain = email.split('@')[1];
     if (!domain) return false;
-    
+
     // Convert to lowercase for comparison
     const domainLower = domain.toLowerCase();
-    
+
     // Check if domain is in allowed list
     if (!ALLOWED_EMAIL_DOMAINS.has(domainLower)) {
         return false;
     }
-    
+
     return true;
 }
 
@@ -50,78 +50,40 @@ export function getEmailValidationError(email) {
     if (!email || typeof email !== 'string') {
         return 'Email is required';
     }
-    
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     if (!emailRegex.test(email)) {
         return 'Please enter a valid email format';
     }
-    
+
     const domain = email.split('@')[1];
     if (!domain) {
         return 'Invalid email domain';
     }
-    
+
     const domainLower = domain.toLowerCase();
     if (!ALLOWED_EMAIL_DOMAINS.has(domainLower)) {
         return 'Please use an email from a supported provider (Gmail, Yahoo, Outlook, etc.)';
     }
-    
+
     return null; // No error
 }
 
-// ================= LANGUAGE VALIDATION (client-side) =================
-
-// List of allowed programming languages / popular frameworks (case-insensitive)
-const ALLOWED_LANGUAGES = new Set([
-    'html', 'css', 'javascript', 'java', 'python', 'c', 'c++', 'c#', 'php', 'sql', 'typescript',
-    'ruby', 'go', 'rust', 'kotlin', 'swift', 'r', 'matlab', 'scala', 'perl', 'dart', 'lua',
-    'bash', 'shell', 'powershell',
-    // Popular libraries/frameworks / runtimes included intentionally
-    'react', 'vue', 'angular', 'svelte', 'node.js', 'node', 'express', 'next.js', 'nuxt', 'django', 'flask', 'asp.net',
-    'graphql'
-].map(s => s.toLowerCase()));
-
-// Simple alias map for common shortnames
-const LANGUAGE_ALIASES = {
-    'js': 'javascript',
-    'ts': 'typescript',
-    'nodejs': 'node.js',
-    'csharp': 'c#',
-    'cpp': 'c++',
-    'py': 'python',
-    'html5': 'html'
-};
-
 export function splitSkills(skillString) {
     if (!skillString) return [];
+    if (Array.isArray(skillString)) return skillString;
     return String(skillString).split(',').map(s => s.trim()).filter(Boolean);
 }
 
 export function normalizeLang(input) {
     if (!input) return '';
-    return input.trim().toLowerCase();
+    return input.trim();
 }
 
 export function isValidLanguage(input) {
-    if (!input || typeof input !== 'string') return false;
-    
-    // Split by comma to handle multiple skills
+    if (!input) return false;
     const skills = splitSkills(input);
-    
-    // If empty after splitting, invalid
-    if (skills.length === 0) return false;
-    
-    // Check each skill individually
-    for (const skill of skills) {
-        const n = normalizeLang(skill);
-        if (!n) return false; // Empty skill
-        
-        // Check if this individual skill is valid
-        const isValid = ALLOWED_LANGUAGES.has(n) || (LANGUAGE_ALIASES[n] && ALLOWED_LANGUAGES.has(LANGUAGE_ALIASES[n]));
-        if (!isValid) return false; // One invalid skill makes whole input invalid
-    }
-    
-    return true; // All skills are valid
+    return skills.length > 0;
 }
 
 // UI helpers: attach an error message element next to a field and toggle messages
@@ -152,13 +114,7 @@ export function validateFieldAndShow(field) {
         field.classList.add('border-green-500');
         return true;
     } else {
-        // Show better error message for multiple skills
-        const skills = splitSkills(val);
-        if (skills.length > 1) {
-            if (msgEl) msgEl.textContent = 'One or more skills are not recognized. Use valid programming languages separated by commas.';
-        } else {
-            if (msgEl) msgEl.textContent = 'Please enter valid programming languages (e.g., Python, JavaScript, Java). Separate multiple skills with commas.';
-        }
+        if (msgEl) msgEl.textContent = 'Please enter at least one skill.';
         field.classList.add('border-red-500');
         field.classList.remove('border-green-500');
         return false;
@@ -181,9 +137,9 @@ export function attachLanguageValidationToField(fieldId) {
 export function attachEmailValidationToField(fieldId) {
     const field = document.getElementById(fieldId);
     if (!field) return;
-    
+
     const errorEl = ensureFieldErrorEl(field);
-    
+
     const validate = () => {
         const email = field.value.trim();
         if (!email) {
@@ -192,9 +148,9 @@ export function attachEmailValidationToField(fieldId) {
             field.classList.remove('border-green-500');
             return false;
         }
-        
+
         const error = getEmailValidationError(email);
-        
+
         if (!error) {
             if (errorEl) errorEl.textContent = '';
             field.classList.remove('border-red-500');
@@ -207,7 +163,7 @@ export function attachEmailValidationToField(fieldId) {
             return false;
         }
     };
-    
+
     field.addEventListener('input', validate);
     field.addEventListener('blur', validate);
 }

@@ -5,9 +5,9 @@ import {
     onAuthStateChanged,
     sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { ref, set, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { auth, database } from "../config/firebaseConfig.js";
-import { isValidLanguage, validateFieldAndShow, isValidEmail } from "../utils/validators.js";
+import { isValidLanguage, validateFieldAndShow, isValidEmail, splitSkills } from "../utils/validators.js";
 import { showDashboard, hideDashboard, showAlert, setText } from "../utils/uiHelpers.js";
 
 export async function signupUser(event) {
@@ -29,9 +29,19 @@ export async function signupUser(event) {
 
     const email = emailEl.value.trim();
     const password = passEl.value;
-    const name = nameEl ? nameEl.value.trim() : '';
-    const offer = offerEl ? offerEl.value.trim() : '';
-    const learn = learnEl ? learnEl.value.trim() : '';
+    const rawName = nameEl ? nameEl.value.trim() : '';
+    const rawOffer = offerEl ? offerEl.value.trim() : '';
+    const rawLearn = learnEl ? learnEl.value.trim() : '';
+
+    // Format Name: first letter of each part capitalized, rest lowercase
+    const name = rawName.split(' ').map(part => {
+        if (!part) return '';
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }).join(' ');
+
+    // Convert skills to arrays
+    const offer = splitSkills(rawOffer);
+    const learn = splitSkills(rawLearn);
 
     // Validate email
     if (!isValidEmail(email)) {
@@ -45,11 +55,11 @@ export async function signupUser(event) {
     }
 
     // Validate skills
-    if (!isValidLanguage(offer) || !isValidLanguage(learn)) {
-        console.warn('Invalid language provided', { offer, learn });
+    if (!isValidLanguage(rawOffer) || !isValidLanguage(rawLearn)) {
+        console.warn('Invalid language provided', { offer: rawOffer, learn: rawLearn });
         if (message) {
             message.style.color = 'red';
-            message.textContent = 'Please enter valid programming languages for both skills.';
+            message.textContent = 'Please enter at least one skill for both teaching and learning.';
         }
         validateFieldAndShow(offerEl);
         validateFieldAndShow(learnEl);
@@ -59,10 +69,10 @@ export async function signupUser(event) {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
-        
+
         // Send email verification
         await sendEmailVerification(userCredential.user);
-        
+
         // Save user data
         await set(ref(database, "users/" + uid), {
             name: name,
@@ -74,9 +84,9 @@ export async function signupUser(event) {
             sessionsCompleted: 0,
             emailVerified: false
         });
-        
-        if (message) { 
-            message.style.color = "green"; 
+
+        if (message) {
+            message.style.color = "green";
             message.innerHTML = `
                 ✅ Account created successfully!<br><br>
                 📧 We've sent a verification email to <strong>${email}</strong><br><br>
@@ -115,9 +125,9 @@ export function loginUser(event) {
     console.log('Attempting signInWithEmailAndPassword for', email);
 
     signInWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
+        .then(async (userCredential) => {
             console.log('signIn success', userCredential.user.uid);
-            
+
             // Check if email is verified
             if (!userCredential.user.emailVerified) {
                 console.log('Email not verified yet');
@@ -132,7 +142,53 @@ export function loginUser(event) {
                 signOut(auth);
                 return;
             }
+
+            // Check for bans
+            const uid = userCredential.user.uid;
+            const userSnap = await get(ref(database, "users/" + uid));
             
+            if (userSnap.exists()) {
+                const userData = userSnap.val();
+                
+                // Check permanent ban
+                if (userData.isPermanentlyBanned) {
+                    if (message) {
+                        message.style.color = "red";
+                        message.innerHTML = `
+                            🚫 Your account has been permanently suspended due to repeated violations.<br><br>
+                            If you believe this is a mistake, please contact support.
+                        `;
+                    }
+                    await signOut(auth);
+                    return;
+                }
+                
+                // Check temporary ban
+                if (userData.isTemporarilyBanned && userData.temporaryBanUntil > Date.now()) {
+                    const banEndDate = new Date(userData.temporaryBanUntil);
+                    const daysLeft = Math.ceil((userData.temporaryBanUntil - Date.now()) / (1000 * 60 * 60 * 24));
+                    if (message) {
+                        message.style.color = "orange";
+                        message.innerHTML = `
+                            ⚠️ Your account is temporarily restricted due to multiple reports.<br><br>
+                            Restriction ends: <strong>${banEndDate.toLocaleDateString()}</strong> (${daysLeft} days)<br><br>
+                            You can login but cannot send requests or messages.
+                        `;
+                    }
+                    // Allow login but with restrictions
+                    setTimeout(() => { window.location.href = "home.html"; }, 3000);
+                    return;
+                }
+                
+                // Clear expired temporary ban
+                if (userData.isTemporarilyBanned && userData.temporaryBanUntil <= Date.now()) {
+                    await update(ref(database, "users/" + uid), { 
+                        isTemporarilyBanned: false,
+                        temporaryBanUntil: null
+                    });
+                }
+            }
+
             if (message) { message.style.color = "green"; message.textContent = "Login successful! Redirecting..."; }
             setTimeout(() => { window.location.href = "home.html"; }, 200);
         })

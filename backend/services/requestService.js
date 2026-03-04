@@ -62,7 +62,7 @@ export function openRequestModal(mentor) {
     }
 
     if (!skillInput.value) {
-        skillInput.placeholder = offers.length ? offers.join(', ') : 'e.g. Python Programming';
+        skillInput.placeholder = offers.length ? offers.join(', ') : 'e.g. Graphic Design';
     }
 
     overlay.classList.remove('hidden');
@@ -117,8 +117,45 @@ export async function handleRequestSendClick(event) {
             return;
         }
 
+        // Check if user is temporarily banned
+        const userSnap = await get(ref(database, "users/" + currentUser.uid));
+        if (userSnap.exists()) {
+            const userData = userSnap.val();
+            if (userData.isTemporarilyBanned && userData.temporaryBanUntil > Date.now()) {
+                const banEndDate = new Date(userData.temporaryBanUntil);
+                await showAlert(`Your account is temporarily restricted. You cannot send requests until ${banEndDate.toLocaleDateString()}.`, 'Account Restricted');
+                closeRequestModal();
+                requestModalState.isSubmitting = false;
+                return;
+            }
+        }
+
         if (!currentModalMentor) {
             await showAlert('Mentor information missing.');
+            requestModalState.isSubmitting = false;
+            return;
+        }
+
+        // ✅ MUTUAL BLOCK CHECK - Prevent requests if either user blocked the other
+        const currentUserData = userSnap.exists() ? userSnap.val() : {};
+        const currentUserBlocked = currentUserData.blockedUsers || [];
+        
+        // Get target user data to check if they blocked current user
+        const targetUserSnap = await get(ref(database, "users/" + currentModalMentor.uid));
+        const targetUserData = targetUserSnap.exists() ? targetUserSnap.val() : {};
+        const targetUserBlocked = targetUserData.blockedUsers || [];
+        
+        // Check both directions
+        if (currentUserBlocked.includes(currentModalMentor.uid)) {
+            await showAlert('You cannot send requests to this user.', 'Action Blocked');
+            closeRequestModal();
+            requestModalState.isSubmitting = false;
+            return;
+        }
+        
+        if (targetUserBlocked.includes(currentUser.uid)) {
+            await showAlert('You cannot interact with this user.', 'Action Blocked');
+            closeRequestModal();
             requestModalState.isSubmitting = false;
             return;
         }
@@ -166,170 +203,191 @@ export async function populateRequestsPage(currentUid) {
     try {
         const receivedContainer = document.getElementById("receivedRequests");
         const sentContainer = document.getElementById("sentRequests");
+        const receivedBadge = document.getElementById("receivedCountBadge");
+        const sentBadge = document.getElementById("sentCountBadge");
+        const emptyTemplate = document.getElementById("emptyStateTemplate");
 
-        if (receivedContainer) receivedContainer.innerHTML = '<p class="text-gray-400">Loading…</p>';
-        if (sentContainer) sentContainer.innerHTML = '<p class="text-gray-400">Loading…</p>';
+        if (receivedContainer) receivedContainer.innerHTML = '<p class="text-gray-400 col-span-full">Loading…</p>';
+        if (sentContainer) sentContainer.innerHTML = '<p class="text-gray-400 col-span-full">Loading…</p>';
 
         const requestsSnap = await get(ref(database, "requests"));
         let requests = [];
         if (requestsSnap.exists()) requests = Object.entries(requestsSnap.val()).map(([id, r]) => ({ id, ...r }));
 
-        const received = requests.filter(r => r.to === currentUid && r.status !== 'canceled');
-        const sent = requests.filter(r => r.from === currentUid && r.status !== 'canceled');
+        const received = requests.filter(r => r.to === currentUid && r.status !== 'canceled').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const sent = requests.filter(r => r.from === currentUid && r.status !== 'canceled').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        if (receivedBadge) receivedBadge.textContent = received.length;
+        if (sentBadge) sentBadge.textContent = sent.length;
+
+        const { openProfileModal } = await import('./profileModal.js');
+
+        const renderEmpty = (container, title, desc) => {
+            container.innerHTML = '';
+            const clone = emptyTemplate.cloneNode(true);
+            clone.classList.remove('hidden');
+            clone.querySelector('#emptyTitle').textContent = title;
+            clone.querySelector('#emptyDesc').textContent = desc;
+            container.appendChild(clone);
+        };
+
+        const createRequestCard = async (r, type) => {
+            const isReceived = type === 'received';
+            const otherUid = isReceived ? r.from : r.to;
+            const userSnap = await get(ref(database, "users/" + otherUid));
+            const user = userSnap.exists() ? userSnap.val() : { name: 'Unknown', email: '—' };
+            user.uid = otherUid;
+
+            const card = document.createElement('div');
+            card.className = 'request-card rounded-2xl p-6 flex flex-col gap-4 relative animate-fade-in';
+
+            const statusColors = {
+                pending: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+                accepted: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+                rejected: 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+            };
+            const statusColor = statusColors[r.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+
+            const skills = splitSkills(user.offer);
+            const skillTags = skills.slice(0, 3).map(s => `<span class="px-2 py-0.5 bg-white/5 border border-white/10 rounded-md text-[10px] uppercase tracking-wider font-bold text-gray-400">${escapeHtml(s)}</span>`).join('');
+
+            // Avatar with photo support
+            let avatarContent;
+            if (user.photoURL) {
+                avatarContent = `<img src="${user.photoURL}" alt="Profile" class="w-full h-full object-cover">`;
+            } else {
+                const initial = (user.name ? user.name[0] : (user.email ? user.email[0] : '?')).toUpperCase();
+                avatarContent = initial;
+            }
+
+            card.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center font-bold text-white text-lg border border-white/10 overflow-hidden">
+                            ${avatarContent}
+                        </div>
+                        <div>
+                            <div class="font-bold text-white text-lg leading-tight">${escapeHtml(user.name || 'User')}</div>
+                            <div class="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
+                                Wants to learn: <span class="text-gray-300 font-medium">${escapeHtml(r.skill || '—')}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${statusColor}">
+                        ${escapeHtml(r.status)}
+                    </div>
+                </div>
+
+                <div class="p-4 bg-white/5 border border-white/5 rounded-xl">
+                    <p class="text-sm text-gray-400 italic line-clamp-2">"${r.note ? escapeHtml(r.note) : 'No message provided.'}"</p>
+                </div>
+
+                <div class="flex items-center gap-2 mt-2">
+                    ${skillTags}
+                    ${skills.length > 3 ? `<span class="text-[10px] text-gray-500">+${skills.length - 3} more</span>` : ''}
+                </div>
+
+                <div class="flex items-center gap-3 mt-4 pt-4 border-t border-white/5">
+                    ${isReceived && r.status === 'pending' ? `
+                        <button class="acceptBtn px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-all active:scale-95 flex-1" data-id="${r.id}">Accept</button>
+                        <button class="rejectBtn px-4 py-2 bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-500 border border-white/10 rounded-lg text-sm font-bold transition-all active:scale-95 flex-1" data-id="${r.id}">Reject</button>
+                    ` : ''}
+                    ${!isReceived && r.status === 'pending' ? `
+                        <button class="cancelBtn px-4 py-2 bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-500 border border-white/10 rounded-lg text-sm font-bold transition-all active:scale-95 flex-1" data-id="${r.id}">Cancel Request</button>
+                    ` : ''}
+                    ${r.status === 'accepted' && r.sessionId ? `
+                        <a class="px-4 py-2 bg-primary hover:bg-primary/80 text-white rounded-lg text-sm font-bold transition-all active:scale-95 flex-1 text-center" href="chat.html?sessionId=${r.sessionId}">Open Chat</a>
+                    ` : ''}
+                    <button class="profileBtn px-4 py-2 bg-white/5 border border-white/10 text-gray-300 rounded-lg text-sm font-bold transition-all hover:bg-white/10 active:scale-95 flex-1">View Profile</button>
+                </div>
+            `;
+
+            card.querySelector('.profileBtn').onclick = () => openProfileModal(user, currentUid);
+
+            if (card.querySelector('.acceptBtn')) {
+                card.querySelector('.acceptBtn').onclick = () => handleAccept(r.id);
+            }
+            if (card.querySelector('.rejectBtn')) {
+                card.querySelector('.rejectBtn').onclick = () => handleReject(r.id);
+            }
+            if (card.querySelector('.cancelBtn')) {
+                card.querySelector('.cancelBtn').onclick = () => handleCancel(r.id);
+            }
+
+            return card;
+        };
+
+        const handleAccept = async (id) => {
+            const ok = await showConfirm('Accept this request and start a session?', 'Accept request', 'Accept', 'Cancel');
+            if (!ok) return;
+            try {
+                const requestSnap = await get(ref(database, "requests/" + id));
+                const r = requestSnap.val();
+                const teacherUid = r.to;
+                const learnerUid = r.from;
+                const [teacherSnap, learnerSnap] = await Promise.all([
+                    get(ref(database, `users/${teacherUid}`)),
+                    get(ref(database, `users/${learnerUid}`))
+                ]);
+                const teacherData = teacherSnap.exists() ? teacherSnap.val() : {};
+                const learnerData = learnerSnap.exists() ? learnerSnap.val() : {};
+
+                const sessRef = push(ref(database, "sessions"));
+                await set(sessRef, {
+                    teacher: teacherUid, learner: learnerUid, skill: r.skill || '', status: 'active',
+                    createdAt: Date.now(), teacherName: teacherData.name || '', teacherEmail: teacherData.email || '',
+                    learnerName: learnerData.name || '', learnerEmail: learnerData.email || '',
+                    teacherRated: false, learnerRated: false
+                });
+
+                await update(ref(database, "requests/" + id), { status: 'accepted', acceptedAt: Date.now(), sessionId: sessRef.key });
+                await showAlert('Request accepted. Session created.', 'Accepted');
+                populateRequestsPage(currentUid);
+            } catch (err) { console.error(err); await showAlert('Failed to accept request.'); }
+        };
+
+        const handleReject = async (id) => {
+            const ok = await showConfirm('Reject this request?', 'Reject request', 'Reject', 'Cancel');
+            if (!ok) return;
+            try {
+                await update(ref(database, "requests/" + id), { status: 'rejected', respondedAt: Date.now() });
+                await showAlert('Request rejected.', 'Rejected');
+                populateRequestsPage(currentUid);
+            } catch (err) { console.error(err); await showAlert('Failed to reject request.'); }
+        };
+
+        const handleCancel = async (id) => {
+            const ok = await showConfirm('Do you really want to cancel this request?', 'Cancel request', 'Yes, cancel', 'Keep');
+            if (!ok) return;
+            try {
+                await update(ref(database, `requests/${id}`), { status: 'canceled', canceledAt: Date.now() });
+                await showAlert('Request canceled.', 'Canceled');
+                populateRequestsPage(currentUid);
+            } catch (err) { console.error(err); await showAlert('Failed to cancel request.'); }
+        };
 
         if (receivedContainer) {
             receivedContainer.innerHTML = '';
-            if (received.length === 0) receivedContainer.innerHTML = '<p class="text-gray-400">No requests received.</p>';
-            for (const r of received) {
-                const fromSnap = await get(ref(database, "users/" + r.from));
-                const fromUser = fromSnap.exists() ? fromSnap.val() : { name: 'Unknown', email: '—' };
-
-                const card = document.createElement('div');
-                card.className = 'bg-white/5 border border-white/10 rounded-md p-4 mb-3';
-                card.innerHTML = `
-          <div class="flex justify-between items-start">
-            <div>
-              <div class="font-semibold">${escapeHtml(fromUser.name || fromUser.email || 'User')}</div>
-              <div class="text-sm text-gray-400">Skill: ${escapeHtml(r.skill || '—')}</div>
-              <div class="text-sm text-gray-400 mt-2">Note: ${r.note ? escapeHtml(r.note) : '—'}</div>
-              <div class="text-sm text-gray-400 mt-2">Status: ${escapeHtml(r.status)}</div>
-            </div>
-            <div class="flex flex-col gap-2">
-              ${r.status === 'pending' ? `<button class="acceptBtn px-3 py-1 bg-primary text-white rounded-md" data-id="${r.id}">Accept</button>` : ''}
-              ${r.status === 'pending' ? `<button class="rejectBtn px-3 py-1 border border-white/20 rounded-md" data-id="${r.id}">Reject</button>` : ''}
-              ${r.status === 'accepted' && r.sessionId ? `<a class="chatBtn px-3 py-1 bg-primary text-white rounded-md" href="chat.html?sessionId=${r.sessionId}">Chat</a>` : ''}
-            </div>
-          </div>
-        `;
-                receivedContainer.appendChild(card);
+            if (received.length === 0) {
+                renderEmpty(receivedContainer, "No Received Requests", "When someone connects with you, it will appear here.");
+            } else {
+                for (const r of received) {
+                    receivedContainer.appendChild(await createRequestCard(r, 'received'));
+                }
             }
         }
 
         if (sentContainer) {
             sentContainer.innerHTML = '';
-            if (sent.length === 0) sentContainer.innerHTML = '<p class="text-gray-400">No requests sent.</p>';
-            for (const r of sent) {
-                const toSnap = await get(ref(database, "users/" + r.to));
-                const toUser = toSnap.exists() ? toSnap.val() : { name: 'Unknown' };
-
-                const card = document.createElement('div');
-                card.className = 'bg-white/5 border border-white/10 rounded-md p-4 mb-3 relative';
-                card.innerHTML = `
-          <div>
-            <div class="font-semibold">${escapeHtml(toUser.name || 'User')}</div>
-            <div class="text-sm text-gray-400">Skill: ${escapeHtml(r.skill || '—')}</div>
-            <div class="text-sm text-gray-400 mt-2">Note: ${r.note ? escapeHtml(r.note) : '—'}</div>
-            <div class="text-sm text-gray-400 mt-2">Status: ${escapeHtml(r.status)}</div>
-          </div>
-          ${r.status === 'accepted' && r.sessionId ? `<a class="chatBtn absolute right-4 bottom-4 px-3 py-1 bg-primary text-white rounded-md" href="chat.html?sessionId=${r.sessionId}">Chat</a>` : ''}
-        `;
-                if (r.status === 'pending') {
-                    const cancelBtnHtml = `<button class="cancelBtn absolute right-4 top-4 px-3 py-1 rounded-md border" data-id="${r.id}">Cancel</button>`;
-                    card.insertAdjacentHTML('beforeend', cancelBtnHtml);
-                }
-                sentContainer.appendChild(card);
-
-                if (r.status === 'pending') {
-                    const cancelBtn = card.querySelector('.cancelBtn');
-                    if (cancelBtn) {
-                        cancelBtn.onclick = async () => {
-                            const ok = await showConfirm('Do you really want to cancel this request?', 'Cancel request', 'Yes, cancel', 'Keep');
-                            if (!ok) return;
-                            try {
-                                await update(ref(database, 'requests/' + r.id), { status: 'canceled', canceledAt: Date.now() });
-                                await showAlert('Request canceled.', 'Canceled');
-                                await populateRequestsPage(currentUid);
-                                const { populateDashboardFor, populateBrowsePage } = await import('./userService.js');
-                                await populateDashboardFor(currentUid, auth.currentUser?.email, auth.currentUser);
-                                if (window.location.pathname.includes('browse.html')) {
-                                    await populateBrowsePage(currentUid);
-                                }
-                            } catch (err) {
-                                console.error('Cancel failed', err);
-                                await showAlert('Failed to cancel request.');
-                            }
-                        };
-                    }
+            if (sent.length === 0) {
+                renderEmpty(sentContainer, "No Sent Requests", "Start browsing skills to find a mentor!");
+            } else {
+                for (const r of sent) {
+                    sentContainer.appendChild(await createRequestCard(r, 'sent'));
                 }
             }
         }
-
-        document.querySelectorAll('.acceptBtn').forEach(btn => {
-            btn.onclick = async () => {
-                const id = btn.getAttribute('data-id');
-                if (!id) return;
-                const requestSnap = await get(ref(database, "requests/" + id));
-                if (!requestSnap.exists()) { await showAlert('Request not found'); return; }
-                const r = requestSnap.val();
-
-                const ok = await showConfirm('Accept this request and start a session?', 'Accept request', 'Accept', 'Cancel');
-                if (!ok) return;
-
-                try {
-                    const teacherUid = r.to;
-                    const learnerUid = r.from;
-
-                    const [teacherSnap, learnerSnap] = await Promise.all([
-                        get(ref(database, `users/${teacherUid}`)),
-                        get(ref(database, `users/${learnerUid}`))
-                    ]);
-
-                    const teacherData = teacherSnap.exists() ? teacherSnap.val() : {};
-                    const learnerData = learnerSnap.exists() ? learnerSnap.val() : {};
-
-                    // create session
-                    const sessRef = push(ref(database, "sessions"));
-                    const sessionObj = {
-                        teacher: teacherUid,
-                        learner: learnerUid,
-                        skill: r.skill || '',
-                        status: 'active',
-                        createdAt: Date.now(),
-                        teacherName: teacherData.name || '',
-                        teacherEmail: teacherData.email || '',
-                        learnerName: learnerData.name || '',
-                        learnerEmail: learnerData.email || '',
-                        teacherRated: false,
-                        learnerRated: false
-                    };
-                    await set(sessRef, sessionObj);
-
-                    await update(ref(database, "requests/" + id), {
-                        status: 'accepted',
-                        acceptedAt: Date.now(),
-                        sessionId: sessRef.key
-                    });
-
-                    await showAlert('Request accepted. Session created.', 'Accepted');
-
-                    await populateRequestsPage(auth.currentUser.uid);
-                    const { populateDashboardFor: refreshDash } = await import('./userService.js');
-                    await refreshDash(auth.currentUser.uid, auth.currentUser.email, auth.currentUser);
-                } catch (err) {
-                    console.error('Accept failed', err);
-                    await showAlert('Failed to accept request. Try again.');
-                }
-            };
-        });
-
-        document.querySelectorAll('.rejectBtn').forEach(btn => {
-            btn.onclick = async () => {
-                const id = btn.getAttribute('data-id');
-                if (!id) return;
-                const ok = await showConfirm('Reject this request?', 'Reject request', 'Reject', 'Cancel');
-                if (!ok) return;
-                try {
-                    await update(ref(database, "requests/" + id), { status: 'rejected', respondedAt: Date.now() });
-                    await showAlert('Request rejected.', 'Rejected');
-                    await populateRequestsPage(auth.currentUser.uid);
-                    const { populateDashboardFor: refreshDash2 } = await import('./userService.js');
-                    await refreshDash2(auth.currentUser.uid, auth.currentUser.email, auth.currentUser);
-                } catch (err) {
-                    console.error('Reject failed', err);
-                    await showAlert('Failed to reject request. Try again.');
-                }
-            };
-        });
 
     } catch (err) {
         console.error("Error populating requests page:", err);
@@ -337,9 +395,17 @@ export async function populateRequestsPage(currentUid) {
 }
 
 // ================= MENTOR CARD =================
-export async function createMentorCard(mentor,currentUid) {
+export async function createMentorCard(mentor, currentUid) {
     const card = document.createElement('div');
-    card.className = "bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start";
+    card.className = "bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start hover:scale-[1.02] transition-transform duration-300 cursor-pointer";
+
+    // Add click event for profile modal
+    card.onclick = async (e) => {
+        // Don't open if clicking a button
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
+        const { openProfileModal } = await import('./profileModal.js');
+        openProfileModal(mentor, currentUid);
+    };
 
     const left = document.createElement('div');
     left.className = "flex-1";
@@ -362,8 +428,8 @@ export async function createMentorCard(mentor,currentUid) {
     teachDiv.className = "flex flex-wrap gap-2 mt-3";
     const offerList = splitSkills(mentor.offer);
     if (offerList.length === 0) {
-        const p = document.createElement('div'); 
-        p.className = 'text-gray-400 text-sm'; 
+        const p = document.createElement('div');
+        p.className = 'text-gray-400 text-sm';
         p.textContent = 'No skills offered';
         teachDiv.appendChild(p);
     } else {
@@ -382,27 +448,33 @@ export async function createMentorCard(mentor,currentUid) {
     left.appendChild(meta);
     // ML score badge
     if (mentor.mlScore && mentor.mlScore > 0) {
-    // @ts-ignore
-    const { createMLScoreBadge } = await import("./mlRankingService.js");
-    const badge = createMLScoreBadge(mentor.mlScore, mentor.sentiment || null);
-    left.appendChild(badge);
-}
+        // @ts-ignore
+        const { createMLScoreBadge } = await import("./mlRankingService.js");
+        const badge = createMLScoreBadge(mentor.mlScore, mentor.sentiment || null);
+        left.appendChild(badge);
+    }
     left.appendChild(teachDiv);
     left.appendChild(learnDiv);
 
     const right = document.createElement('div');
     right.className = "mt-4 md:mt-0 md:ml-6 flex flex-col gap-2";
 
-    const viewBtn = document.createElement('a');
-    viewBtn.className = "px-4 py-2 border border-white/20 rounded-md text-sm text-center hover:bg-white/5";
+    const viewBtn = document.createElement('button');
+    viewBtn.className = "px-4 py-2 border border-white/20 rounded-md text-sm text-center hover:bg-white/10 transition";
     viewBtn.textContent = 'View Profile';
-    viewBtn.href = `profile.html?uid=${mentor.uid}`;
+    viewBtn.onclick = async () => {
+        const { openProfileModal } = await import('./profileModal.js');
+        openProfileModal(mentor, currentUid);
+    };
     right.appendChild(viewBtn);
 
     const requestBtn = document.createElement('button');
-    requestBtn.className = "px-4 py-2 bg-primary rounded-md text-white hover:bg-primary/80";
+    requestBtn.className = "px-4 py-2 bg-primary rounded-md text-white hover:bg-primary/80 transition";
     requestBtn.textContent = 'Request';
-    requestBtn.onclick = () => openRequestModal(mentor);
+    requestBtn.onclick = (e) => {
+        e.stopPropagation();
+        openRequestModal(mentor);
+    };
     right.appendChild(requestBtn);
 
     card.appendChild(left);

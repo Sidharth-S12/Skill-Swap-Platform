@@ -7,6 +7,7 @@ const firebaseConfig = {
     apiKey: "AIzaSyBUMI6CgEVrnfsTVBXZx3uZDsBh5oUY-1w",
     authDomain: "skill-swap-platform-53823.firebaseapp.com",
     projectId: "skill-swap-platform-53823",
+    storageBucket: "skill-swap-platform-53823.appspot.com",
     appId: "1:527524796826:web:8b7f50476ba72c8ebe0223",
     databaseURL: "https://skill-swap-platform-53823-default-rtdb.firebaseio.com"
 };

@@ -47,6 +47,7 @@ window.populateProfileFor = UserService.populateProfileFor;
 window.populateBrowsePage = UserService.populateBrowsePage;
 window.getRankedTeachers = UserService.getRankedTeachers;
 window.isConnected = UserService.isConnected;
+window.areUsersBlocked = UserService.areUsersBlocked;
 
 // Request Service Functions
 window.openRequestModal = RequestService.openRequestModal;

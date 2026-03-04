@@ -60,7 +60,7 @@ export function ensureGlobalModal() {
     globalModalExists = true;
 
     const html = `
-  <div id="globalModalOverlay" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center">
+  <div id="globalModalOverlay" class="fixed inset-0 bg-black/60 z-[200] hidden flex items-center justify-center">
     <div id="globalModalCard" class="bg-[#020617] text-gray-200 rounded-xl w-full max-w-md p-6 border border-white/10 shadow-xl relative">
       <div class="flex justify-between items-start mb-4">
         <div>
@@ -131,3 +131,4 @@ export function showConfirm(message, title = '', okText = 'Yes', cancelText = 'C
         cancel.addEventListener('click', onCancel);
     });
 }
+
